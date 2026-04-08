@@ -1,0 +1,29 @@
+{
+  "description": "Production orders pending approval — fetched live from /api/korea/production-orders/alerts",
+  "endpoint": "/api/korea/production-orders/alerts",
+  "method": "GET",
+  "responseSample": {
+    "success": true,
+    "branches": {
+      "vietnam": 0,
+      "thailand": 0,
+      "brunei": 0,
+      "malaysia": 0
+    },
+    "totalPending": 0
+  },
+  "branchTables": [
+    { "key": "vietnam",  "tableName": "production_orders_vietnam", "branchName": "Vietnam"  },
+    { "key": "thailand", "tableName": "production_orders",         "branchName": "Thailand" },
+    { "key": "brunei",   "tableName": "production_orders_brunei",  "branchName": "Brunei"   },
+    { "key": "malaysia", "tableName": "production_orders_malaysia","branchName": "Malaysia" }
+  ],
+  "pendingStatusValues": [
+    "pending",
+    "pending_approval",
+    "pending-approval",
+    "waiting_approval",
+    "waiting approval"
+  ],
+  "legacyTable": "kr_production_orders"
+}

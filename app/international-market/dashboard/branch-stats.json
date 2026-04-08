@@ -1,0 +1,57 @@
+{
+  "all": {
+    "salesApprovals": 44,
+    "electricityCost": 28,
+    "siteInspection": 32,
+    "salesContracts": 35,
+    "equipmentTest": 26,
+    "quotations": 49,
+    "totalSales": 85600000,
+    "pendingApprovals": 12,
+    "pendingProductionOrders": 14
+  },
+  "vietnam": {
+    "salesApprovals": 12,
+    "electricityCost": 8,
+    "siteInspection": 9,
+    "salesContracts": 10,
+    "equipmentTest": 7,
+    "quotations": 14,
+    "totalSales": 23400000,
+    "pendingApprovals": 3,
+    "pendingProductionOrders": 3
+  },
+  "thailand": {
+    "salesApprovals": 15,
+    "electricityCost": 9,
+    "siteInspection": 11,
+    "salesContracts": 12,
+    "equipmentTest": 8,
+    "quotations": 16,
+    "totalSales": 28600000,
+    "pendingApprovals": 4,
+    "pendingProductionOrders": 5
+  },
+  "brunei": {
+    "salesApprovals": 8,
+    "electricityCost": 5,
+    "siteInspection": 5,
+    "salesContracts": 5,
+    "equipmentTest": 5,
+    "quotations": 8,
+    "totalSales": 14700000,
+    "pendingApprovals": 2,
+    "pendingProductionOrders": 2
+  },
+  "malaysia": {
+    "salesApprovals": 9,
+    "electricityCost": 6,
+    "siteInspection": 7,
+    "salesContracts": 8,
+    "equipmentTest": 6,
+    "quotations": 11,
+    "totalSales": 18900000,
+    "pendingApprovals": 3,
+    "pendingProductionOrders": 4
+  }
+}

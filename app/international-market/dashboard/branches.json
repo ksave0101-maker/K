@@ -1,0 +1,7 @@
+[
+  { "id": "all",      "nameEN": "All Branches",     "nameKO": "전체 지점",      "country": "All",      "countryCode": null },
+  { "id": "vietnam",  "nameEN": "Vietnam Branch",    "nameKO": "베트남 지점",    "country": "Vietnam",  "countryCode": "VN" },
+  { "id": "thailand", "nameEN": "Thailand Branch",   "nameKO": "태국 지점",      "country": "Thailand", "countryCode": "TH" },
+  { "id": "brunei",   "nameEN": "Brunei Branch",     "nameKO": "브루나이 지점",  "country": "Brunei",   "countryCode": "BN" },
+  { "id": "malaysia", "nameEN": "Malaysia Branch",   "nameKO": "말레이시아 지점","country": "Malaysia", "countryCode": "MY" }
+]
