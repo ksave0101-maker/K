@@ -1,0 +1,851 @@
+
+@import url('https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css');
+@import url('https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css');
+@import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700;800&display=swap');
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow-x: hidden;
+  /* Sarabun is a formal, highly readable Thai sans-serif — falls back to Inter/system UI for Latin */
+  font-family: 'Sarabun', Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+:root {
+  --btn-radius: 10px;
+  --btn-font-size: 16px;
+  --btn-padding-y: 10px;
+  --btn-padding-x: 16px;
+  --btn-primary-bg: #2563eb;
+  --btn-primary-color: #ffffff;
+  --btn-primary-hover: #1e40af;
+  --btn-shadow: 0 8px 20px rgba(2,6,23,0.12);
+  --btn-shadow-hover: 0 18px 36px rgba(2,6,23,0.18);
+  --btn-transition: 180ms cubic-bezier(.2,.8,.2,1);
+}
+
+/* Base button look: comfortable padding, readable font, subtle rounded corners */
+.k-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: var(--btn-padding-y) var(--btn-padding-x);
+  font-size: var(--btn-font-size);
+  border-radius: var(--btn-radius);
+  border: 0;
+  /* layered surface for a strong 3D look */
+  background: linear-gradient(180deg, #ffffff 0%, #f3f6ff 60%);
+  color: #0b1220;
+  cursor: pointer;
+  box-shadow: 0 18px 40px rgba(2,6,23,0.18), 0 6px 18px rgba(2,6,23,0.08) inset;
+  border: 1px solid rgba(2,6,23,0.06);
+  position: relative; /* contain click feedback pseudo-element */
+  overflow: hidden;
+  transition: transform 220ms cubic-bezier(.2,.8,.2,1), box-shadow 220ms ease, background 150ms ease;
+  will-change: transform, box-shadow;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  backface-visibility: hidden;
+  transform: translateZ(0);
+}
+
+/* Hover: translate upward for a 3D lift; avoid scale to keep glyphs sharp */
+.k-btn:hover {
+  animation: btn-bounce 300ms both;
+  transform: translateY(-10px) translateZ(18px);
+  box-shadow: 0 30px 70px rgba(2,6,23,0.20), 0 10px 24px rgba(2,6,23,0.10) inset;
+}
+
+@keyframes btn-bounce {
+  0% { transform: translateY(0); }
+  35% { transform: translateY(-10px); }
+  60% { transform: translateY(-4px); }
+  100% { transform: translateY(-6px); }
+}
+
+.k-btn:active {
+  transform: translateY(-4px) translateZ(8px);
+  box-shadow: 0 10px 26px rgba(2,6,23,0.16), 0 4px 10px rgba(2,6,23,0.06) inset;
+}
+
+/* brief click feedback using a translucent overlay that fades quickly */
+.k-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(255,255,255,0.06);
+  opacity: 0;
+  transition: opacity 180ms ease;
+  pointer-events: none;
+}
+.k-btn:active::before {
+  opacity: 1;
+  transition: opacity 260ms ease-in-out;
+}
+
+/* style for a JS-added clicked state for immediate feedback */
+.k-btn.clicked {
+  transform: translateY(-6px) translateZ(12px);
+  box-shadow: 0 32px 80px rgba(2,6,23,0.22), 0 8px 22px rgba(2,6,23,0.10) inset;
+}
+.k-btn.clicked::before { opacity: 1; }
+
+/* Ensure pointer cursor stays a hand even during active/click states */
+.k-btn:active, .k-btn.clicked, .k-btn:focus { cursor: pointer !important; }
+.link-button { cursor: pointer !important; }
+.k-btn:focus {
+  outline: 3px solid rgba(37,99,235,0.18);
+  outline-offset: 4px;
+  box-shadow: 0 12px 34px rgba(37,99,235,0.09), 0 6px 14px rgba(2,6,23,0.06) inset;
+}
+
+/* Primary variant: clear blue background with good contrast */
+.k-btn-primary {
+  /* richer gradient, subtle rim and inset to suggest a convex surface */
+  background: linear-gradient(180deg, #3b82f6 0%, #2563eb 60%, #1e40af 100%);
+  color: var(--btn-primary-color);
+  border: 1px solid rgba(13,82,255,0.14);
+  /* outer depth + soft inner shadow for material feel */
+  box-shadow: 0 18px 50px rgba(37,99,235,0.22), 0 6px 18px rgba(2,6,23,0.06) inset;
+  text-shadow: 0 1px 0 rgba(0,0,0,0.12);
+  transition: transform var(--btn-transition), box-shadow var(--btn-transition), filter var(--btn-transition);
+}
+.k-btn-primary:hover {
+  transform: translateY(-10px) translateZ(20px);
+  box-shadow: 0 36px 80px rgba(37,99,235,0.28), 0 6px 22px rgba(2,6,23,0.08) inset;
+  filter: brightness(1.03);
+}
+
+.k-btn-primary:active {
+  transform: translateY(-4px) translateZ(10px) scale(0.996);
+  box-shadow: 0 12px 34px rgba(37,99,235,0.18), 0 4px 12px rgba(2,6,23,0.06) inset;
+  filter: brightness(0.98);
+}
+
+/* glossy highlight strip for the primary button to enhance 3D look */
+.k-btn-primary::after {
+  content: '';
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  top: 6px;
+  height: 12px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.22), rgba(255,255,255,0));
+  pointer-events: none;
+  opacity: 0.95;
+  mix-blend-mode: overlay;
+}
+
+/* Ghost / subtle buttons used inside cards */
+.k-btn-ghost {
+  background: linear-gradient(180deg, #fbfdff 0%, #f8fafc 100%);
+  color: #0f172a;
+  border: 1px solid rgba(2,6,23,0.06);
+  box-shadow: 0 8px 22px rgba(2,6,23,0.06);
+}
+
+/* subtle glossy rim to increase perceived depth (light reflection) */
+.k-btn::after {
+  content: '';
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  top: 6px;
+  height: 8px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.6), rgba(255,255,255,0));
+  pointer-events: none;
+  opacity: 0.85;
+  transform: translateZ(30px);
+}
+
+/* when a button is actually a link, ensure pointer cursor for clarity */
+.link-button { cursor: pointer; }
+
+/* Utility: force crisp text rendering when a transform is applied */
+.crisp-text {
+  -webkit-font-smoothing: antialiased !important;
+  -moz-osx-font-smoothing: grayscale !important;
+  text-rendering: geometricPrecision !important;
+  backface-visibility: hidden !important;
+  transform: translateZ(0) !important;
+  filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+/* Small responsive tweak for narrow viewports */
+@media (max-width: 560px) {
+  .k-btn { font-size: 15px; padding: 8px 12px; }
+}
+
+/* Page-level 3D shell: adds perspective so children can pop out in Z axis */
+.page-shell {
+  padding: 28px;
+  min-height: 100vh;
+  background: linear-gradient(180deg, #f8fafc 0%, #eef2ff 60%);
+  perspective: 1200px; /* short perspective exaggerates depth */
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Card styling with subtle layered surfaces */
+.card {
+  background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+  border-radius: 12px;
+  border: 1px solid rgba(2,6,23,0.06);
+  box-shadow: 0 6px 20px rgba(2,6,23,0.06), 0 2px 6px rgba(2,6,23,0.04);
+  transition: transform 260ms cubic-bezier(.2,.9,.2,1), box-shadow 260ms ease, filter 260ms ease;
+  transform-style: preserve-3d;
+  will-change: transform, box-shadow;
+  padding: 14px;
+}
+
+/* Slight lift and Z translation on hover for a 3D pop — text kept crisp with .crisp-text */
+.card:hover {
+  transform: translateY(-12px) translateZ(28px);
+  box-shadow: 0 30px 60px rgba(2,6,23,0.12), 0 8px 18px rgba(2,6,23,0.06);
+}
+
+/* Machine card specific refinements for a professional, compact layout */
+.machine-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 14px 16px;
+  min-height: 160px;
+}
+
+.machine-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.machine-name { font-size: 18px; font-weight: 800; color: #0f172a; }
+.machine-sub { font-size: 13px; color: #475569; margin-top: 4px }
+
+.status-pill {
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(2,6,23,0.04);
+}
+.status-pill.ok { background: linear-gradient(180deg,#ecfdf5,#d1fae5); color: #065f46; }
+.status-pill.warn { background: linear-gradient(180deg,#fff7ed,#ffedd5); color: #92400e; }
+
+.machine-info-row { display:flex; gap:12px; margin-top:12px }
+.machine-info { flex: 1 }
+.machine-info .label { font-size:13px; color:#475569 }
+.machine-info .value { font-weight:800; font-size:16px; color:#0f172a }
+
+.machine-actions { display:flex; gap:8px; margin-top:12px }
+.machine-action-btn { flex:1; padding:8px 10px; border-radius:8px; font-size:15px }
+.machine-action-btn.small { flex:0 0 auto; padding:8px 12px }
+
+@media (max-width: 720px) {
+  .machine-card { min-width: 220px; max-width: 100%; }
+  .machine-name { font-size: 16px }
+}
+
+.service-card {
+  width: 120px;
+  text-align: center;
+  padding: 12px;
+}
+
+/* subtle inner layer to create a feeling of material depth */
+.card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(255,255,255,0.5), rgba(255,255,255,0));
+  transform: translateZ(-1px) scale(1.02);
+  opacity: 0.6;
+}
+
+/* Controls (select / label) styling to match the elevated UI */
+.controls select, .controls label {
+  font-size: 15px;
+}
+
+/* Keep form elements crisp when their parent transforms */
+.crisp-text input, .crisp-text select, .crisp-text button {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transform: translateZ(0);
+}
+
+/* Professional form controls */
+.k-input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  /* stronger, darker border for higher contrast */
+  border: 1px solid rgba(2,6,23,0.12);
+  background: linear-gradient(180deg, #ffffff, #fbfdff);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.6);
+  /* increased font size by ~2 steps for better readability */
+  font-size: 17px;
+  color: #0f172a;
+  /* ensure inputs don't grow too wide on large screens */
+  max-width: 520px;
+}
+
+.k-input.narrow {
+  max-width: 360px;
+}
+.k-input:focus {
+  outline: none;
+  border-color: rgba(37,99,235,0.9);
+  box-shadow: 0 6px 20px rgba(37,99,235,0.06);
+}
+
+/* Table styles */
+.k-table-wrapper {
+  overflow: auto;
+  border: 1px solid #eef2f8;
+  border-radius: 10px;
+  background: #fff;
+  padding: 10px;
+}
+.k-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 920px;
+  font-size: 14px;
+}
+.k-table th, .k-table td {
+  padding: 10px 12px;
+  border: 1px solid #f1f5f9;
+}
+.k-table thead th {
+  background: linear-gradient(180deg, #f8fafc, #f1f5f9);
+  font-weight: 600;
+  color: #0f172a;
+}
+.k-table tbody tr:hover { background: rgba(37,99,235,0.02); }
+
+/* Search control grouping on admin page */
+.search-controls { display: flex; gap: 8px; align-items: center; }
+.search-controls .k-btn { padding: 6px 10px; }
+
+/* Make inputs/selects in the admin search controls match the Power (before) header size */
+.search-controls .k-input, .search-controls select {
+  font-size: 18px;
+}
+
+/* utility: make a k-input use the larger control typography (used on Device fields) */
+.k-input.large {
+  font-size: 18px;
+}
+
+.controls-right { display: flex; gap: 8px; align-items: center; }
+
+/* Card-like container for data sections */
+.data-card { padding: 14px; border-radius: 10px; background: linear-gradient(180deg,#fff,#fbfdff); border: 1px solid #eef2f8; box-shadow: 0 6px 18px rgba(2,6,23,0.03); }
+
+/* inset control box used to group the From/To datetime selectors inside the data card */
+.controls-card {
+  margin-top: 8px;
+  padding: 10px;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #fbfdff, #ffffff);
+  border: 1px solid rgba(2,6,23,0.06);
+  box-shadow: 0 8px 20px rgba(2,6,23,0.04);
+}
+
+/* ensure inputs inside the controls-card don't shrink and wrap nicely */
+.controls-card .k-input {
+  min-width: 220px;
+  max-width: 420px;
+}
+.controls-card .k-btn {
+  /* ensure the button doesn't shrink and remains clickable area */
+  flex: 0 0 auto;
+}
+
+/* clickable status indicators (cursor pointer) */
+.clickable-status { cursor: pointer; color: #0f172a; }
+
+@media (max-width: 1000px) {
+  .k-table { min-width: 720px; font-size: 13px; }
+}
+
+/* Stronger 3D visual language and deeper shadows */
+:root {
+  --depth-shadow-1: 0 10px 30px rgba(2,6,23,0.14);
+  --depth-shadow-2: 0 20px 60px rgba(2,6,23,0.18);
+  --depth-shadow-3: 0 6px 18px rgba(2,6,23,0.08);
+  --edge-color-strong: rgba(2,6,23,0.08);
+}
+
+/* Ensure the company logo in sidebars and headers displays at a consistent, larger size */
+aside, .sidebar {
+  width: 380px !important;
+}
+
+aside img[src="/k-energy-save-logo.jpg"],
+.headerLogo img {
+  width: 60px !important;
+  height: 60px !important;
+  max-width: 100% !important;
+  object-fit: cover !important;
+  border-radius: 50% !important;
+  padding: 0 !important;
+  object-position: center !important;
+  display: block !important;
+  margin: 0 auto !important;
+}
+
+/* Prevent company title from wrapping in tight spaces */
+.headerLogo, aside .headerTitle, aside .headerSubtitle {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.page-shell {
+  perspective: 1400px;
+}
+
+/* Buttons: stronger lift + subtle Z translate for a 3D feel */
+.k-btn {
+  box-shadow: var(--depth-shadow-1);
+  transition: transform 220ms cubic-bezier(.2,.8,.2,1), box-shadow 220ms ease, background-color 120ms ease;
+}
+.k-btn:hover {
+  transform: translateY(-8px) translateZ(12px);
+  box-shadow: var(--depth-shadow-2);
+}
+.k-btn:active { transform: translateY(-4px) translateZ(6px); }
+
+.k-btn-primary { box-shadow: 0 18px 50px rgba(37,99,235,0.22); }
+
+/* Cards: stronger border and deeper shadow, preserve 3D
+   so nested children can feel elevated */
+.card, .data-card {
+  transform-style: preserve-3d;
+  box-shadow: 0 22px 60px rgba(2,6,23,0.10), 0 8px 24px rgba(2,6,23,0.06);
+  border: 1px solid var(--edge-color-strong);
+}
+.card:hover, .data-card:hover {
+  transform: translateY(-22px) translateZ(40px);
+  box-shadow: 0 40px 110px rgba(2,6,23,0.16), 0 14px 40px rgba(2,6,23,0.08);
+}
+
+/* Table: stronger dividing lines and subtle elevated wrapper */
+.k-table-wrapper {
+  box-shadow: 0 18px 48px rgba(2,6,23,0.08);
+  border: 1px solid rgba(2,6,23,0.06);
+}
+.k-table th, .k-table td { border-color: rgba(2,6,23,0.06); }
+.k-table thead th { border-bottom: 2px solid rgba(2,6,23,0.07); }
+.k-table tbody tr:hover { background: rgba(2,6,23,0.03); }
+
+/* Input focus ring stronger */
+.k-input:focus {
+  box-shadow: 0 12px 32px rgba(37,99,235,0.06);
+  border-color: rgba(37,99,235,0.95);
+}
+
+/* small polish for found-rows cards */
+.found-row { border-radius: 8px; padding: 8px; border: 1px solid rgba(2,6,23,0.06); background: #fff; box-shadow: 0 8px 20px rgba(2,6,23,0.04); }
+
+/* Larger typography for found readings */
+.found-row {
+  font-size: 18px; /* increased by ~2 steps from small labels */
+  min-width: 220px;
+  display: inline-block;
+}
+.found-row-time, .found-row-device, .found-row-field {
+  display: block;
+}
+.found-row-time { color: #0f172a; font-weight: 600; }
+.found-row-device { color: #111827; margin-top: 4px; }
+.found-row-field { color: #374151; margin-top: 4px; font-weight: 500; }
+
+/* Section heading styles for power blocks */
+.power-section-heading {
+  font-size: 20px; /* increase by ~2 steps */
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 8px 0;
+}
+
+.power-group-header {
+  font-size: 18px; /* slightly smaller than section heading but larger than normal th */
+  font-weight: 700;
+  color: #0f172a;
+}
+
+/* Form row helper to ensure consistent spacing between label and input */
+.form-row { margin-bottom: 16px; }
+.form-row label { display: block; margin-bottom: 8px; font-weight: 600; color: #111827; }
+
+
+/* Homepage Styles */
+.hero {
+  background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+  color: white;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 40px 20px;
+  position: relative;
+  overflow: hidden;
+}
+
+.hero::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: url('data:image/svg+xml,<svg width="100" height="100" xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="2" fill="rgba(255,255,255,0.1)"/></svg>');
+  opacity: 0.3;
+}
+
+.logo-hero {
+  width: 450px;
+  height: 220px;
+  margin: 0 auto 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: #ffffff;
+  border-radius: 25px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  transition: all 0.3s ease;
+}
+
+.logo-hero:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
+}
+
+.emoji-hero {
+  width: 120px;
+  height: 120px;
+  margin: 0 auto 20px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 60px;
+  backdrop-filter: blur(10px);
+  border: 3px solid rgba(255, 255, 255, 0.2);
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+.hero h1 {
+  font-size: 48px;
+  font-weight: 700;
+  margin-bottom: 20px;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.hero h2 {
+  font-size: 36px;
+  font-weight: 600;
+  margin-bottom: 20px;
+  color: #fbbf24;
+}
+
+.tagline {
+  font-size: 20px;
+  margin-bottom: 40px;
+  opacity: 0.95;
+  line-height: 1.6;
+}
+
+.btn-custom-primary {
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+  color: #1e3a8a !important;
+  box-shadow: 0 6px 25px rgba(251, 191, 36, 0.5);
+  font-size: 20px;
+  font-weight: 700;
+  padding: 18px 45px;
+  border-radius: 50px;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  transition: all 0.3s ease;
+  border: none;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.btn-custom-primary:hover {
+  transform: translateY(-4px) scale(1.02);
+  box-shadow: 0 10px 35px rgba(251, 191, 36, 0.7);
+  background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%);
+  color: #1e3a8a !important;
+}
+
+.btn-custom-secondary {
+  background: rgba(255, 255, 255, 0.15);
+  color: white !important;
+  border: 3px solid white;
+  backdrop-filter: blur(15px);
+  font-size: 20px;
+  font-weight: 700;
+  padding: 18px 45px;
+  border-radius: 50px;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  transition: all 0.3s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.btn-custom-secondary:hover {
+  background: white;
+  color: #1e3a8a !important;
+  transform: translateY(-4px) scale(1.02);
+  box-shadow: 0 10px 35px rgba(255, 255, 255, 0.4);
+}
+
+.section-title {
+  text-align: center;
+  font-size: 36px;
+  font-weight: 700;
+  margin-bottom: 60px;
+  color: #1e3a8a;
+}
+
+.feature-card {
+  background: #f8f9fa;
+  padding: 40px 30px;
+  border-radius: 20px;
+  text-align: center;
+  transition: all 0.3s ease;
+  border: 2px solid transparent;
+  height: 100%;
+}
+
+.feature-card:hover {
+  transform: translateY(-10px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+  border-color: #3b82f6;
+}
+
+.feature-icon {
+  width: 80px;
+  height: 80px;
+  margin: 0 auto 20px;
+  background: linear-gradient(135deg, #3b82f6 0%, #1e3a8a 100%);
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 40px;
+}
+
+.feature-title {
+  font-size: 22px;
+  font-weight: 600;
+  margin-bottom: 15px;
+  color: #1e3a8a;
+}
+
+.feature-desc {
+  color: #666;
+  line-height: 1.6;
+}
+
+.product-card {
+  background: white;
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s ease;
+  height: 100%;
+}
+
+.product-card:hover {
+  transform: translateY(-10px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+}
+
+.product-header {
+  background: linear-gradient(135deg, #3b82f6 0%, #1e3a8a 100%);
+  color: white;
+  padding: 30px 20px;
+  text-align: center;
+}
+
+.product-name {
+  font-size: 24px;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.contact-card {
+  background: rgba(255, 255, 255, 0.95);
+  padding: 40px 30px;
+  border-radius: 20px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+  transition: all 0.3s ease;
+  height: 100%;
+}
+
+.contact-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 15px 50px rgba(0, 0, 0, 0.3);
+}
+
+.contact-card h3 {
+  color: #1e3a8a;
+  font-size: 24px;
+  font-weight: 700;
+  margin-bottom: 25px;
+  padding-bottom: 15px;
+  border-bottom: 3px solid #fbbf24;
+}
+
+@media (max-width: 768px) {
+  .logo-hero {
+    width: 280px;
+    height: 180px;
+  }
+  .hero h1 {
+    font-size: 32px;
+  }
+  .hero h2 {
+    font-size: 24px;
+  }
+  .section-title {
+    font-size: 28px;
+  }
+}
+
+/* Announcement Bar */
+.announcement-bar {
+  background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
+  color: white;
+  padding: 18px 0;
+  text-align: center;
+  font-weight: 800;
+  font-size: 24px;
+  font-family: 'Poppins', sans-serif;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  white-space: nowrap;
+  letter-spacing: 0.5px;
+}
+
+.announcement-bar::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+  animation: shimmer 3s infinite;
+}
+
+@keyframes shimmer {
+  0% { left: -100%; }
+  100% { left: 100%; }
+}
+
+@keyframes scroll {
+  0% { transform: translateX(100%); }
+  100% { transform: translateX(-100%); }
+}
+
+.announcement-bar i {
+  margin-right: 10px;
+  animation: pulse 2s infinite;
+}
+
+.announcement-bar a {
+  color: white;
+  text-decoration: underline;
+  font-weight: 700;
+  margin-left: 10px;
+  transition: color 0.3s ease;
+}
+
+.announcement-bar a:hover {
+  color: #fbbf24;
+}
+
+.announcement-content {
+  position: relative;
+  z-index: 1;
+  display: inline-block;
+  animation: scroll 35s linear infinite;
+  padding-left: 20%;
+}
+
+.announcement-bar:hover .announcement-content {
+  animation-play-state: paused;
+}
+
+/* Login page keyframes */
+@keyframes checkmark {
+  0% { stroke-dashoffset: 100; opacity: 0; }
+  50% { stroke-dashoffset: 0; opacity: 1; }
+  100% { stroke-dashoffset: 0; opacity: 1; }
+}
+@keyframes scaleIn {
+  0% { transform: scale(0); opacity: 0; }
+  50% { transform: scale(1.1); }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-20px) rotate(5deg); }
+}
+@keyframes pulse {
+  0%, 100% { transform: scale(1); opacity: 0.3; }
+  50% { transform: scale(1.05); opacity: 0.5; }
+}
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(30px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@keyframes slideIn {
+  from { transform: translateX(400px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}

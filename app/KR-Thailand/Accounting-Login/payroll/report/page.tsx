@@ -1,0 +1,32 @@
+"use client"
+
+import React from 'react'
+import AccWindow, { useLang } from '../../components/AccWindow'
+
+export default function PayrollReportPage() {
+  const { L } = useLang()
+
+  return (
+    <AccWindow title={L('บริษัท เค เอ็นเนอร์ยี่ เซฟ จำกัด', 'K Energy Save Co., Ltd.')}>
+      <div style={{ padding: 30 }}>
+        <div style={{
+          background: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)',
+          borderRadius: 12,
+          padding: 24,
+          marginBottom: 24,
+          color: '#fff'
+        }}>
+          <div style={{ fontSize: 24, fontWeight: 800 }}>
+            📊 {L('Payroll Report', 'รายงานเงินเดือน')}
+          </div>
+        </div>
+
+        <div style={{ background: '#fff', borderRadius: 12, padding: 24, border: '2px solid #e5e7eb' }}>
+          <div style={{ fontSize: 16, color: '#6b7280', textAlign: 'center', padding: 40 }}>
+            {L('Payroll reporting system coming soon...', 'ระบบรายงานเงินเดือนกำลังพัฒนา...')}
+          </div>
+        </div>
+      </div>
+    </AccWindow>
+  )
+}

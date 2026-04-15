@@ -1,0 +1,13 @@
+# Cloudflare Pages configuration
+name = "kenergysaveadmin"
+compatibility_date = "2024-12-01"
+
+# Build command: npm run build
+# Output directory: .next
+
+# Environment variables
+[env.production.vars]
+INFLUX_HOST = "http://127.0.0.1:8086"
+INFLUX_ORG = "K-Energy_Save"
+INFLUX_BUCKET = "k_db"
+GRAFANA_URL = "http://127.0.0.1:3000"

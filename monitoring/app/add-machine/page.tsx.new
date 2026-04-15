@@ -1,0 +1,121 @@
+"use client"
+
+import React, { useState } from 'react'
+
+export default function AddMachinePage() {
+  const [name, setName] = useState('')
+  const [ksave, setKsave] = useState('')
+  const [location, setLocation] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [result, setResult] = useState<any | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(null)
+
+  // core submit logic separated so we can retry without an event
+  async function submitMachine() {
+    setSaving(true)
+    setError(null)
+    setResult(null)
+    setSuccess(null)
+
+    // basic client-side validation
+    if (!name.trim() || !ksave.trim()) {
+      setError('Please provide machine name and series no (ksave).')
+      setSaving(false)
+      throw new Error('validation')
+    }
+
+    try {
+      const res = await fetch('/api/admin/machines', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, ksave, location })
+      })
+
+      // read response text for better error messages
+      const text = await res.text().catch(() => '')
+      if (!res.ok) {
+        let serverMsg = text
+        try {
+          const parsed = JSON.parse(text || '{}')
+          if (parsed && parsed.error) serverMsg = parsed.error
+        } catch (_) {}
+        const msg = serverMsg || `${res.status} ${res.statusText}`
+        throw new Error(msg)
+      }
+
+      let body: any = {}
+      try { body = JSON.parse(text || '{}') } catch (_) { body = {} }
+      setResult(body)
+
+      if (body && body.ok) {
+        const dev = body?.machine?.ksave || ksave
+        setSuccess(`Saved successfully${dev ? `: ${dev}` : ''}`)
+        setTimeout(() => setSuccess(null), 4000)
+      }
+
+      // clear inputs only on success
+      setName('')
+      setKsave('')
+      setLocation('')
+      return body
+    } catch (err: any) {
+      const msg = err?.message || String(err)
+      setError(`Save failed: ${msg}`)
+      console.error('AddMachine submit error:', err)
+      throw err
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    try {
+      await submitMachine()
+    } catch (_) {
+      // error already set
+    }
+  }
+
+  return (
+    <div style={{ padding: 20 }}>
+      <h2>Add machine</h2>
+      <form onSubmit={handleSubmit} style={{ maxWidth: 640 }}>
+        {success && <div style={{ marginBottom: 12, padding: 10, background: '#ecfccb', border: '1px solid #86efac', color: '#065f46', borderRadius: 6 }}>{success}</div>}
+
+        <div style={{ marginBottom: 8 }}>
+          <label style={{ display: 'block', fontSize: 13 }}>Machine/Series name.</label>
+          <input className="k-input" value={name} onChange={(e) => setName(e.target.value)} />
+        </div>
+
+        <div style={{ marginBottom: 8 }}>
+          <label style={{ display: 'block', fontSize: 13 }}>Machine/Series no. (device)</label>
+          <input className="k-input" value={ksave} onChange={(e) => setKsave(e.target.value)} />
+        </div>
+
+        <div style={{ marginBottom: 8 }}>
+          <label style={{ display: 'block', fontSize: 13 }}>Location / Site</label>
+          <input className="k-input" value={location} onChange={(e) => setLocation(e.target.value)} />
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+          <button className="k-btn k-btn-primary" type="submit" disabled={saving || !name.trim() || !ksave.trim()}>{saving ? 'Saving...' : 'Create'}</button>
+          <button className="k-btn k-btn-ghost" type="button" onClick={() => { setName(''); setKsave(''); setLocation(''); setResult(null); setError(null) }}>Reset</button>
+        </div>
+
+        {error && (
+          <div style={{ marginTop: 12, color: '#b91c1c' }}>
+            <div style={{ fontWeight: 600, marginBottom: 6 }}>Save failed</div>
+            <div>{error}</div>
+            <div style={{ marginTop: 8 }}>
+              <button className="k-btn k-btn-primary" type="button" onClick={() => submitMachine() } disabled={saving}>Retry</button>
+            </div>
+          </div>
+        )}
+
+        {result && <pre style={{ marginTop: 12, background: '#f8fafc', padding: 8 }}>{JSON.stringify(result, null, 2)}</pre>}
+      </form>
+    </div>
+  )
+}

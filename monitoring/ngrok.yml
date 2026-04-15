@@ -1,0 +1,15 @@
+version: "2"
+authtoken: YOUR_NGROK_AUTH_TOKEN
+tunnels:
+  ksystem-api:
+    proto: http
+    addr: 3001
+    inspect: true
+    # Uncomment for custom domain (requires paid plan)
+    # hostname: your-company.ngrok.app
+  phpmyadmin:
+    proto: http
+    addr: 8081
+    inspect: true
+    # Uncomment for custom domain (requires paid plan)
+    # hostname: phpmyadmin.your-company.ngrok.app

@@ -1,0 +1,2241 @@
+'use client';
+
+import { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
+import { useLocale } from '@/lib/LocaleContext';
+import { translations } from '@/lib/translations';
+import { ArrowLeft, FileText, Zap, Activity, AlertTriangle, CheckCircle, XCircle, BarChart3, TrendingUp, Info, Globe, Plus, Search, Eye, Edit, Trash2, Download, DollarSign, Calendar, User, Building } from 'lucide-react';
+import CountryFlag from '@/components/CountryFlag';
+
+interface PhaseData {
+  L1: number;
+  L2: number;
+  L3: number;
+  N: number;
+}
+
+interface AnalysisData {
+  id: string;
+  branch: string;
+  location: string;
+  equipment: string;
+  datetime: string;
+  technician: string;
+  voltage: string;
+  frequency: number;
+  powerFactor: number;
+  thd: number;
+  current: PhaseData;
+  balance: 'Good' | 'Fair' | 'Poor';
+  result: 'Recommended' | 'Not Recommended' | 'Further Analysis Required';
+  recommendation: string;
+  notes: string;
+  // Additional fields for Further Analysis Required
+  additionalTests?: {
+    harmonicAnalysis: boolean;
+    powerQualityCheck: boolean;
+    loadBalancing: boolean;
+    temperatureMonitoring: boolean;
+    cableIntegrityTest: boolean;
+  };
+  scheduledFollowUp?: {
+    date: string;
+    technician: string;
+    priority: 'Low' | 'Medium' | 'High' | 'Critical';
+    expectedDuration: string;
+  };
+  additionalEquipment?: string[];
+  estimatedCost?: number;
+  riskAssessment?: 'Low' | 'Medium' | 'High';
+}
+
+interface Bill {
+  id: string;
+  billNumber: string;
+  analysisId: string;
+  customerName: string;
+  customerCountry: string;
+  contactPerson: string;
+  email: string;
+  analysisType: string;
+  serviceFee: number;
+  equipmentCost: number;
+  installationCost: number;
+  totalAmount: number;
+  currency: string;
+  dueDate: string;
+  status: 'pending' | 'paid' | 'overdue' | 'cancelled';
+  createdDate: string;
+  lastModified: string;
+  notes?: string;
+}
+
+// Helper functions for automatic data generation
+const generateDocumentNumber = (): string => {
+  const year = new Date().getFullYear();
+  const month = String(new Date().getMonth() + 1).padStart(2, '0');
+  const day = String(new Date().getDate()).padStart(2, '0');
+  const random = Math.floor(Math.random() * 999) + 1;
+  return `PIA-${year}-${month}${day}-${String(random).padStart(3, '0')}`;
+};
+
+const getCurrentDateTime = (): string => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const hours = String(now.getHours()).padStart(2, '0');
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  return `${year}-${month}-${day} ${hours}:${minutes}`;
+};
+
+const sampleAnalysis: AnalysisData = {
+  id: 'PIA-2026-0216-001', // Static initial value to prevent hydration error
+  branch: 'Vietnam',
+  location: 'Ho Chi Minh City Office - UPS Room',
+  equipment: 'Fluke 438-II Motor Analyzer',
+  datetime: '2026-02-16 14:30', // Static initial value to prevent hydration error
+  technician: 'Nguyen Van Duc',
+  voltage: 380,
+  frequency: 49.98,
+  powerFactor: 0.85,
+  thd: 7.8,
+  current: {
+    L1: 156.3,
+    L2: 142.9,
+    L3: 168.7,
+    N: 22.1
+  },
+  balance: 'Poor',
+  result: 'Further Analysis Required', 
+  recommendation: 'L3상과 L2상 간 전류 차이가 큼. UPS 시스템 점검 및 부하 재분배 필요.',
+  notes: 'UPS 시스템으로 인한 고조파 및 상 불균형, 개선 후 재검토',
+  additionalTests: {
+    harmonicAnalysis: true,
+    powerQualityCheck: true,
+    loadBalancing: true,
+    temperatureMonitoring: false,
+    cableIntegrityTest: true
+  },
+  scheduledFollowUp: {
+    date: '2026-02-20 09:00',
+    technician: 'Park Sung-ho',
+    priority: 'High',
+    expectedDuration: '4 hours'
+  },
+  additionalEquipment: [
+    'Fluke 1770 Power Quality Analyzer',
+    'Thermal Imaging Camera',
+    'Cable Fault Locator'
+  ],
+  estimatedCost: 850000,
+  riskAssessment: 'High'
+};
+
+// Current Waveform Chart Component - Clean Line Graph Format
+const CurrentWaveformChart = ({ data, translations }: { data: PhaseData, translations: any }) => {
+  // 7-day current measurement data
+  const currentData = [
+    { day: '11/02', phaseA: 156.3, phaseB: 142.9, phaseC: 168.7 },
+    { day: '12/02', phaseA: 158.1, phaseB: 144.2, phaseC: 170.1 },
+    { day: '13/02', phaseA: 155.8, phaseB: 141.7, phaseC: 167.9 },
+    { day: '14/02', phaseA: 157.2, phaseB: 143.5, phaseC: 169.3 },
+    { day: '15/02', phaseA: 156.7, phaseB: 142.1, phaseC: 168.2 },
+    { day: '16/02', phaseA: 156.9, phaseB: 143.8, phaseC: 169.1 },
+    { day: '17/02', phaseA: 155.5, phaseB: 141.9, phaseC: 167.4 },
+    { day: '18/02', phaseA: 156.3, phaseB: 142.9, phaseC: 168.7 }
+  ];
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-lg">
+      <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
+        <Activity className="w-5 h-5 mr-2 text-blue-600" />
+        {translations.quantifiedCurrentAnalysis}
+      </h3>
+      <div className="relative">
+        <svg width="100%" height="280" viewBox="0 0 450 280" className="border border-gray-200 rounded-lg bg-gray-50">
+          {/* Clean grid background */}
+          <defs>
+            <pattern id="currentGrid" width="50" height="35" patternUnits="userSpaceOnUse">
+              <path d="M 50 0 L 0 0 0 35" fill="none" stroke="#F3F4F6" strokeWidth="1"/>
+            </pattern>
+          </defs>
+          <rect width="450" height="280" fill="url(#currentGrid)" />
+          
+          {/* Y-axis scale */}
+          <text x="15" y="20" fill="#374151" fontSize="12" fontWeight="bold">A</text>
+          <text x="10" y="45" fill="#6B7280" fontSize="10">200A</text>
+          <text x="10" y="80" fill="#6B7280" fontSize="10">150A</text>
+          <text x="10" y="115" fill="#6B7280" fontSize="10">100A</text>
+          <text x="15" y="150" fill="#6B7280" fontSize="10">50A</text>
+          
+          {/* Horizontal reference lines */}
+          <line x1="50" y1="40" x2="400" y2="40" stroke="#E5E7EB" strokeWidth="1" strokeDasharray="3,3" />
+          <line x1="50" y1="75" x2="400" y2="75" stroke="#E5E7EB" strokeWidth="1" strokeDasharray="3,3" />
+          <line x1="50" y1="110" x2="400" y2="110" stroke="#E5E7EB" strokeWidth="1" strokeDasharray="3,3" />
+          <line x1="50" y1="145" x2="400" y2="145" stroke="#E5E7EB" strokeWidth="1" strokeDasharray="3,3" />
+          
+          {/* Current trend lines - smooth and clean */}
+          {/* Phase A line (156.3A average) */}
+          <polyline 
+            points="70,78 120,76 170,80 220,77 270,78 320,78 370,81 400,78"
+            fill="none" stroke="#EF4444" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"
+          />
+          {/* Phase B line (142.9A average) */}
+          <polyline 
+            points="70,88 120,86 170,90 220,87 270,89 320,86 370,90 400,88"
+            fill="none" stroke="#10B981" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"
+          />
+          {/* Phase C line (168.7A average) */}
+          <polyline 
+            points="70,68 120,66 170,70 220,67 270,69 320,67 370,71 400,68"
+            fill="none" stroke="#3B82F6" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"
+          />
+          
+          {/* Data points with white stroke for better visibility */}
+          {currentData.map((data, index) => {
+            const x = 70 + (index * 47);
+            return (
+              <g key={index}>
+                <circle cx={x} cy="78" r="4" fill="#EF4444" stroke="white" strokeWidth="2" />
+                <circle cx={x} cy="88" r="4" fill="#10B981" stroke="white" strokeWidth="2" />
+                <circle cx={x} cy="68" r="4" fill="#3B82F6" stroke="white" strokeWidth="2" />
+              </g>
+            );
+          })}
+          
+          {/* X-axis labels */}
+          {currentData.map((data, index) => {
+            const x = 70 + (index * 47);
+            return (
+              <text key={index} x={x-12} y="250" fill="#6B7280" fontSize="10" fontFamily="monospace" fontWeight="500">
+                {data.day}
+              </text>
+            );
+          })}
+          
+          {/* Beautiful legend with background */}
+          <rect x="60" y="180" width="320" height="40" fill="white" stroke="#E5E7EB" rx="8" />
+          <circle cx="80" cy="195" r="4" fill="#EF4444" />
+          <text x="90" y="199" fill="#374151" fontSize="11" fontWeight="600">Phase A: 156.3A</text>
+          <circle cx="190" cy="195" r="4" fill="#10B981" />
+          <text x="200" y="199" fill="#374151" fontSize="11" fontWeight="600">Phase B: 142.9A</text>
+          <circle cx="300" cy="195" r="4" fill="#3B82F6" />
+          <text x="310" y="199" fill="#374151" fontSize="11" fontWeight="600">Phase C: 168.7A</text>
+        </svg>
+        
+        <div className="mt-4 flex flex-wrap gap-4">
+          <div className="flex items-center">
+            <div className="w-4 h-0.5 bg-red-600 mr-2"></div>
+            <span className="text-sm text-gray-700 font-mono">Phase A: 156.3A</span>
+          </div>
+          <div className="flex items-center">
+            <div className="w-4 h-0.5 bg-green-600 mr-2"></div>
+            <span className="text-sm text-gray-700 font-mono">Phase B: 142.9A</span>
+          </div>
+          <div className="flex items-center">
+            <div className="w-4 h-0.5 bg-blue-600 mr-2"></div>
+            <span className="text-sm text-gray-700 font-mono">Phase C: 168.7A</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Voltage Analysis Chart Component
+const VoltageAnalysisChart = ({ translations }: { translations: any }) => {
+  // 7-day voltage data (Feb 11-18, 2026)
+  const voltageData = [
+    { day: '11/02', L1N: 220.1, L2N: 220.0, L3N: 219.9 },
+    { day: '12/02', L1N: 220.2, L2N: 220.1, L3N: 220.0 },
+    { day: '13/02', L1N: 220.0, L2N: 219.8, L3N: 220.1 },
+    { day: '14/02', L1N: 219.9, L2N: 220.0, L3N: 220.0 },
+    { day: '15/02', L1N: 220.1, L2N: 220.2, L3N: 219.8 },
+    { day: '16/02', L1N: 220.0, L2N: 219.9, L3N: 220.1 },
+    { day: '17/02', L1N: 219.8, L2N: 220.0, L3N: 220.0 },
+    { day: '18/02', L1N: 220.0, L2N: 220.1, L3N: 219.9 }
+  ];
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-lg">
+      <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
+        <Zap className="w-5 h-5 mr-2 text-yellow-600" />
+        {translations.quantifiedVoltageAnalysis}
+      </h3>
+      <div className="relative">
+        <svg width="100%" height="280" viewBox="0 0 450 280" className="border border-gray-200 rounded-lg bg-gray-50">
+          {/* Clean grid background */}
+          <defs>
+            <pattern id="voltageGrid" width="50" height="30" patternUnits="userSpaceOnUse">
+              <path d="M 50 0 L 0 0 0 30" fill="none" stroke="#F3F4F6" strokeWidth="1"/>
+            </pattern>
+          </defs>
+          <rect width="450" height="280" fill="url(#voltageGrid)" />
+          
+          {/* Y-axis scale */}
+          <text x="15" y="20" fill="#374151" fontSize="12" fontWeight="bold">V</text>
+          <text x="15" y="50" fill="#6B7280" fontSize="10">225V</text>
+          <text x="15" y="90" fill="#6B7280" fontSize="10">220V</text>
+          <text x="15" y="130" fill="#6B7280" fontSize="10">215V</text>
+          
+          {/* Horizontal reference lines */}
+          <line x1="50" y1="45" x2="400" y2="45" stroke="#E5E7EB" strokeWidth="1" strokeDasharray="3,3" />
+          <line x1="50" y1="85" x2="400" y2="85" stroke="#E5E7EB" strokeWidth="1" strokeDasharray="3,3" />
+          <line x1="50" y1="125" x2="400" y2="125" stroke="#E5E7EB" strokeWidth="1" strokeDasharray="3,3" />
+          
+          {/* Voltage trend lines - smooth and clean */}
+          {/* L1-N line */}
+          <polyline 
+            points="70,84 120,82 170,86 220,88 270,84 320,86 370,90 400,86"
+            fill="none" stroke="#10B981" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"
+          />
+          {/* L2-N line */}
+          <polyline 
+            points="70,86 120,84 170,90 220,86 270,82 320,88 370,86 400,84"
+            fill="none" stroke="#EF4444" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"
+          />
+          {/* L3-N line */}
+          <polyline 
+            points="70,88 120,86 170,84 220,86 270,90 320,84 370,86 400,88"
+            fill="none" stroke="#3B82F6" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"
+          />
+          
+          {/* Data points */}
+          {voltageData.map((data, index) => {
+            const x = 70 + (index * 47);
+            return (
+              <g key={index}>
+                <circle cx={x} cy="85" r="4" fill="#10B981" stroke="white" strokeWidth="2" />
+                <circle cx={x} cy="86" r="4" fill="#EF4444" stroke="white" strokeWidth="2" />
+                <circle cx={x} cy="87" r="4" fill="#3B82F6" stroke="white" strokeWidth="2" />
+              </g>
+            );
+          })}
+          
+          {/* X-axis labels */}
+          {voltageData.map((data, index) => {
+            const x = 70 + (index * 47);
+            return (
+              <text key={index} x={x-12} y="250" fill="#6B7280" fontSize="10" fontFamily="monospace" fontWeight="500">
+                {data.day}
+              </text>
+            );
+          })}
+          
+          {/* Beautiful legend with background */}
+          <rect x="60" y="190" width="320" height="40" fill="white" stroke="#E5E7EB" rx="8" />
+          <circle cx="80" cy="205" r="4" fill="#10B981" />
+          <text x="90" y="209" fill="#374151" fontSize="11" fontWeight="600">L1-N: 220V</text>
+          <circle cx="170" cy="205" r="4" fill="#EF4444" />
+          <text x="180" y="209" fill="#374151" fontSize="11" fontWeight="600">L2-N: 220V</text>
+          <circle cx="260" cy="205" r="4" fill="#3B82F6" />
+          <text x="270" y="209" fill="#374151" fontSize="11" fontWeight="600">L3-N: 220V</text>
+        </svg>
+        
+        <div className="mt-4 flex flex-wrap gap-4">
+          <div className="flex items-center">
+            <div className="w-4 h-0.5 bg-green-600 mr-2"></div>
+            <span className="text-sm text-gray-700 font-mono">L1-N: 220V</span>
+          </div>
+          <div className="flex items-center">
+            <div className="w-4 h-0.5 bg-red-600 mr-2"></div>
+            <span className="text-sm text-gray-700 font-mono">L2-N: 220V</span>
+          </div>
+          <div className="flex items-center">
+            <div className="w-4 h-0.5 bg-blue-600 mr-2"></div>
+            <span className="text-sm text-gray-700 font-mono">L3-N: 220V</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Power Analysis Chart Component
+const PowerAnalysisChart = ({ data, translations }: { data: PhaseData, translations: any }) => {
+  // 7-day power consumption pattern data
+  const powerData = [
+    { day: '11/02', peak: 165, avgDay: 110, night: 12 },
+    { day: '12/02', peak: 158, avgDay: 108, night: 14 },
+    { day: '13/02', peak: 170, avgDay: 112, night: 11 },
+    { day: '14/02', peak: 162, avgDay: 109, night: 13 },
+    { day: '15/02', peak: 156, avgDay: 107, night: 15 },
+    { day: '16/02', peak: 168, avgDay: 111, night: 10 },
+    { day: '17/02', peak: 163, avgDay: 110, night: 12 },
+    { day: '18/02', peak: 159, avgDay: 108, night: 14 }
+  ];
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-lg">
+      <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
+        <TrendingUp className="w-5 h-5 mr-2 text-purple-600" />
+        {translations.quantifiedPowerAnalysis}
+      </h3>
+      <div className="relative">
+        <svg width="100%" height="300" viewBox="0 0 450 300" className="border border-gray-200 rounded-lg bg-gray-50">
+          {/* Clean grid background */}
+          <defs>
+            <pattern id="powerGrid" width="50" height="30" patternUnits="userSpaceOnUse">
+              <path d="M 50 0 L 0 0 0 30" fill="none" stroke="#F3F4F6" strokeWidth="1"/>
+            </pattern>
+          </defs>
+          <rect width="450" height="300" fill="url(#powerGrid)" />
+          
+          {/* Y-axis scale */}
+          <text x="10" y="20" fill="#374151" fontSize="12" fontWeight="bold">kW</text>
+          <text x="10" y="45" fill="#6B7280" fontSize="10">180</text>
+          <text x="10" y="75" fill="#6B7280" fontSize="10">150</text>
+          <text x="10" y="105" fill="#6B7280" fontSize="10">120</text>
+          <text x="15" y="135" fill="#6B7280" fontSize="10">90</text>
+          <text x="15" y="165" fill="#6B7280" fontSize="10">60</text>
+          <text x="15" y="195" fill="#6B7280" fontSize="10">30</text>
+          <text x="20" y="225" fill="#6B7280" fontSize="10">0</text>
+          
+          {/* Horizontal reference lines */}
+          <line x1="50" y1="40" x2="400" y2="40" stroke="#E5E7EB" strokeWidth="1" strokeDasharray="3,3" />
+          <line x1="50" y1="70" x2="400" y2="70" stroke="#E5E7EB" strokeWidth="1" strokeDasharray="3,3" />
+          <line x1="50" y1="100" x2="400" y2="100" stroke="#E5E7EB" strokeWidth="1" strokeDasharray="3,3" />
+          <line x1="50" y1="130" x2="400" y2="130" stroke="#E5E7EB" strokeWidth="1" strokeDasharray="3,3" />
+          <line x1="50" y1="160" x2="400" y2="160" stroke="#E5E7EB" strokeWidth="1" strokeDasharray="3,3" />
+          <line x1="50" y1="190" x2="400" y2="190" stroke="#E5E7EB" strokeWidth="1" strokeDasharray="3,3" />
+          
+          {/* Power trend lines - smooth and clean */}
+          {/* Peak power line (150-170 kW) */}
+          <polyline 
+            points="70,75 120,82 170,68 220,76 270,85 320,70 370,74 400,80"
+            fill="none" stroke="#EF4444" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"
+          />
+          {/* Average daytime power line (110 kW) */}
+          <polyline 
+            points="70,105 120,108 170,102 220,106 270,109 320,104 370,105 400,108"
+            fill="none" stroke="#F59E0B" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"
+          />
+          {/* Nighttime base load line (10-15 kW) */}
+          <polyline 
+            points="70,208 120,202 170,212 220,206 270,200 320,215 370,208 400,202"
+            fill="none" stroke="#3B82F6" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"
+          />
+          
+          {/* Data points with enhanced visibility */}
+          {powerData.map((data, index) => {
+            const x = 70 + (index * 47);
+            return (
+              <g key={index}>
+                <circle cx={x} cy="76" r="5" fill="#EF4444" stroke="white" strokeWidth="3" />
+                <circle cx={x} cy="106" r="5" fill="#F59E0B" stroke="white" strokeWidth="3" />
+                <circle cx={x} cy="207" r="5" fill="#3B82F6" stroke="white" strokeWidth="3" />
+              </g>
+            );
+          })}
+          
+          {/* X-axis labels */}
+          {powerData.map((data, index) => {
+            const x = 70 + (index * 47);
+            return (
+              <text key={index} x={x-12} y="270" fill="#6B7280" fontSize="10" fontFamily="monospace" fontWeight="500">
+                {data.day}
+              </text>
+            );
+          })}
+          
+          {/* Beautiful legend with background */}
+          <rect x="60" y="230" width="320" height="50" fill="white" stroke="#E5E7EB" rx="8" />
+          <circle cx="80" cy="245" r="5" fill="#EF4444" />
+          <text x="90" y="249" fill="#374151" fontSize="11" fontWeight="600">Peak Power: 150-170 kW</text>
+          <circle cx="80" cy="260" r="5" fill="#F59E0B" />
+          <text x="90" y="264" fill="#374151" fontSize="11" fontWeight="600">Average Daytime: 110 kW</text>
+          <circle cx="240" cy="252" r="5" fill="#3B82F6" />
+          <text x="250" y="256" fill="#374151" fontSize="11" fontWeight="600">Nighttime Base: 10-15 kW</text>
+        </svg>
+        
+        <div className="mt-4 flex flex-wrap gap-4">
+          <div className="flex items-center">
+            <div className="w-4 h-0.5 bg-purple-600 mr-2"></div>
+            <span className="text-sm text-gray-700 font-mono">Peak Power Demand: 150-170 kW</span>
+          </div>
+          <div className="flex items-center">
+            <div className="w-4 h-0.5 bg-green-600 mr-2"></div>
+            <span className="text-sm text-gray-700 font-mono">Average Daytime Load: 110 kW</span>
+          </div>
+          <div className="flex items-center">
+            <div className="w-4 h-0.5 bg-red-600 mr-2"></div>
+            <span className="text-sm text-gray-700 font-mono">Nighttime Base Load: 10-15 kW</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Phase Balance Chart Component
+const PhaseBalanceChart = ({ data, translations }: { data: PhaseData, translations: any }) => {
+  const maxCurrent = Math.max(data.L1, data.L2, data.L3);
+  const getBarColor = (current: number) => {
+    const percentage = (current / maxCurrent) * 100;
+    if (percentage > 95) return 'bg-red-500';
+    if (percentage > 85) return 'bg-yellow-500';
+    return 'bg-green-500';
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-lg">
+      <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
+        <BarChart3 className="w-5 h-5 mr-2 text-green-600" />
+        {translations.phaseDistribution}
+      </h3>
+      <div className="space-y-4">
+        {[
+          {label: translations.l1Phase, value: data.L1, color: 'bg-red-500'},
+          {label: translations.l2Phase, value: data.L2, color: 'bg-green-500'},
+          {label: translations.l3Phase, value: data.L3, color: 'bg-blue-500'}
+        ].map((phase, index) => (
+          <div key={index} className="flex items-center space-x-3">
+            <div className="w-12 text-sm font-bold text-gray-700">{phase.label}</div>
+            <div className="flex-1 bg-gray-200 rounded-full h-6 relative">
+              <div 
+                className={`h-6 rounded-full ${phase.color} transition-all duration-1000`}
+                style={{ width: `${(phase.value / maxCurrent) * 100}%` }}
+              ></div>
+              <span className="absolute right-2 top-0 h-6 flex items-center text-xs font-bold text-gray-800">
+                {phase.value}{translations.ampere}
+              </span>
+            </div>
+          </div>
+        ))}
+        <div className="flex items-center space-x-3 pt-2 border-t border-gray-200">
+          <div className="w-12 text-sm font-bold text-gray-700">{translations.neutralLine}</div>
+          <div className="flex-1 bg-gray-200 rounded-full h-4 relative">
+            <div 
+              className="h-4 rounded-full bg-gray-600 transition-all duration-1000"
+              style={{ width: `${(data.N / maxCurrent) * 100}%` }}
+            ></div>
+            <span className="absolute right-2 top-0 h-4 flex items-center text-xs font-bold text-gray-800">
+              {data.N}{translations.ampere}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+// Translation additions for the analysis page
+const analysisTranslations = {
+  ko: {
+    preInstallationCurrentAnalysis: '설치전 전류 분석',
+    threePhaseCurrentPowerQuality: '3상 전류 및 전력 품질 분석 보고서',
+    threePhaseCurrentAnalysis: '3상 전류 분석',
+    datetime: '일시',
+    technician: '기사',
+    installationRecommended: '설치 권장',
+    installationNotRecommended: '설치 권장하지 않음',
+    additionalAnalysisRequired: '추가 분석 필요',
+    branch: '지점',
+    customerLocation: '고객 위치',
+    measurementEquipment: '측정장비',
+    measurementPeriod7Days: '측정기간 (7일)',
+    electricalParametersAutoAnalyzed: '전기적 매개변수 (자동 분석됨)',
+    voltage: '전압',
+    frequency: '주파수',
+    powerFactor: '역률',
+    totalHarmonicDistortionTHD: '총 고조파 왜곡률(THD)',
+    autoDetected: '자동 감지됨',
+    standard: '표준',
+    calculated: '계산됨',
+    estimated: '추정됨',
+    threePhaseCurrentAnalysisInput: '3상 전류 분석 (측정값 입력)',
+    phaseBalance: '상 균형',
+    imbalanceRate: '불균형률',
+    good: '양호',
+    fair: '보통',
+    poor: '불량',
+    analysisResults: '분석 결과',
+    result: '결과',
+    recommendedActions: '권장 조치',
+    notes: '비고',
+    technicalInterpretation: '기술적 해석',
+    recommendedProduct: '추천 제품',
+    madeBy: '작성자',
+    date: '날짜',
+    selectProduct: '제품 선택',
+    selectEngineer: '엔지니어 선택',
+    approvalPending: '승인 대기중',
+    approvalApproved: '승인됨',
+    requestApproval: '승인 요청',
+    phaseDistribution: '상별 전류 분포',
+    l1Phase: 'L1상',
+    l2Phase: 'L2상', 
+    l3Phase: 'L3상',
+    neutralLine: 'N선',
+    ampere: 'A',
+    quantifiedCurrentAnalysis: '정량화된 전류 분석',
+    quantifiedVoltageAnalysis: '정량화된 전압 분석',
+    quantifiedPowerAnalysis: '정량화된 전력 분석',
+    enterPassword: '비밀번호 입력',
+    verifyPassword: '비밀번호 확인',
+    invalidPassword: '잘못된 비밀번호',
+    recommendationText: 'L3상과 L2상 간 전류 차이가 큼. UPS 시스템 점검 및 부하 재분배 필요.',
+    notesText: 'UPS 시스템으로 인한 고조파 및 상 불균형, 개선 후 재검토',
+    technicalInterpretationText: 'Phase imbalance exceeding 10% generally considered undesirable in three phase systems. High imbalance typically over 25% on Phase 1 indicates inefficient load distribution, increased losses, and higher stress on upstream electrical equipment.',
+    // Additional analysis fields
+    additionalTestsRequired: '추가 필요 테스트',
+    scheduledFollowUp: '추적 검사 예정',
+    additionalEquipmentNeeded: '추가 필요 장비',
+    estimatedCost: '예상 비용',
+    riskAssessment: '위험 평가',
+    harmonicAnalysis: '고조파 분석',
+    powerQualityCheck: '전력 품질 검사',
+    loadBalancing: '부하 균형 조정',
+    temperatureMonitoring: '온도 모니터링',
+    cableIntegrityTest: '케이블 무결성 테스트',
+    followUpDate: '추적 검사일',
+    assignedTechnician: '담당 기사',
+    priority: '우선순위',
+    expectedDuration: '예상 소요시간',
+    required: '필요',
+    optional: '선택',
+    low: '낮음',
+    medium: '보통',
+    high: '높음',
+    critical: '긴급',
+    won: '원',
+    // Document creation
+    createDocument: '문서 생성',
+    generatePDF: 'PDF 생성',
+    printDocument: '문서 인쇄',
+    documentCreated: '문서가 성공적으로 생성됨',
+    exportOptions: '내보내기 옵션',
+    saveAsPDF: 'PDF로 저장',
+    sendEmail: '이메일 발송',
+    viewPreview: '미리보기'
+  },
+  en: {
+    preInstallationCurrentAnalysis: 'Pre-Installation Current Analysis',
+    threePhaseCurrentPowerQuality: '3-Phase Current & Power Quality Analysis Report',
+    threePhaseCurrentAnalysis: '3-Phase Current Analysis',
+    datetime: 'Date/Time',
+    technician: 'Technician',
+    installationRecommended: 'Installation Recommended',
+    installationNotRecommended: 'Installation Not Recommended',
+    additionalAnalysisRequired: 'Additional Analysis Required',
+    branch: 'Branch',
+    customerLocation: 'Customer Location',
+    measurementEquipment: 'Measurement Equipment',
+    measurementPeriod7Days: 'Measurement Period (7 days)',
+    electricalParametersAutoAnalyzed: 'Electrical Parameters (Auto-Analyzed)',
+    voltage: 'Voltage',
+    frequency: 'Frequency',
+    powerFactor: 'Power Factor',
+    totalHarmonicDistortionTHD: 'Total Harmonic Distortion (THD)',
+    autoDetected: 'Auto-detected',
+    standard: 'Standard',
+    calculated: 'Calculated',
+    estimated: 'Estimated',
+    threePhaseCurrentAnalysisInput: '3-Phase Current Analysis (Input Measured Values)',
+    phaseBalance: 'Phase Balance',
+    imbalanceRate: 'Imbalance Rate',
+    good: 'Good',
+    fair: 'Fair',
+    poor: 'Poor',
+    analysisResults: 'Analysis Results',
+    result: 'Result',
+    recommendedActions: 'Recommended Actions',
+    notes: 'Notes',
+    technicalInterpretation: 'Technical Interpretation',
+    recommendedProduct: 'Recommended Product',
+    madeBy: 'Made by',
+    date: 'Date',
+    selectProduct: 'Select Product',
+    selectEngineer: 'Select Engineer',
+    approvalPending: 'Approval Pending',
+    approvalApproved: 'Approved',
+    requestApproval: 'Request Approval',
+    phaseDistribution: 'Phase Current Distribution',
+    l1Phase: 'L1 Phase',
+    l2Phase: 'L2 Phase', 
+    l3Phase: 'L3 Phase',
+    neutralLine: 'Neutral Line',
+    ampere: 'A',
+    quantifiedCurrentAnalysis: 'Quantified Current Analysis',
+    quantifiedVoltageAnalysis: 'Quantified Voltage Analysis',
+    quantifiedPowerAnalysis: 'Quantified Power Analysis',
+    enterPassword: 'Enter Password',
+    verifyPassword: 'Verify Password',
+    invalidPassword: 'Invalid Password',
+    recommendationText: 'Large current difference between L3 and L2 phases. UPS system inspection and load redistribution required.',
+    notesText: 'Harmonics and phase imbalance due to UPS system, review after improvement',
+    technicalInterpretationText: 'Phase imbalance exceeding 10% generally considered undesirable in three phase systems. High imbalance typically over 25% on Phase 1 indicates inefficient load distribution, increased losses, and higher stress on upstream electrical equipment.',
+    // Additional analysis fields
+    additionalTestsRequired: 'Additional Tests Required',
+    scheduledFollowUp: 'Scheduled Follow-up',
+    additionalEquipmentNeeded: 'Additional Equipment Needed',
+    estimatedCost: 'Estimated Cost',
+    riskAssessment: 'Risk Assessment',
+    harmonicAnalysis: 'Harmonic Analysis',
+    powerQualityCheck: 'Power Quality Check',
+    loadBalancing: 'Load Balancing',
+    temperatureMonitoring: 'Temperature Monitoring',
+    cableIntegrityTest: 'Cable Integrity Test',
+    followUpDate: 'Follow-up Date',
+    assignedTechnician: 'Assigned Technician',
+    priority: 'Priority',
+    expectedDuration: 'Expected Duration',
+    required: 'Required',
+    optional: 'Optional',
+    low: 'Low',
+    medium: 'Medium',
+    high: 'High',
+    critical: 'Critical',
+    won: 'KRW',
+    // Document creation
+    createDocument: 'Create Document',
+    generatePDF: 'Generate PDF',
+    printDocument: 'Print Document',
+    documentCreated: 'Document Created Successfully',
+    exportOptions: 'Export Options',
+    saveAsPDF: 'Save as PDF',
+    sendEmail: 'Send Email',
+    viewPreview: 'View Preview',
+    // Billing
+    createBill: 'Create Bill',
+    newBill: 'New Bill',
+    billNumber: 'Bill Number',
+    serviceFee: 'Service Fee',
+    equipmentCost: 'Equipment Cost', 
+    installationCost: 'Installation Cost',
+    totalAmount: 'Total Amount',
+    dueDate: 'Due Date',
+    billStatus: 'Status',
+    pending: 'Pending',
+    paid: 'Paid',
+    overdue: 'Overdue',
+    cancelled: 'Cancelled',
+    billCreated: 'Bill Created Successfully',
+    viewBills: 'View Bills',
+    billManagement: 'Bill Management'
+  },
+  th: {
+    preInstallationCurrentAnalysis: 'การวิเคราะห์กระแสไฟฟ้าก่อนติดตั้ง',
+    threePhaseCurrentPowerQuality: 'รายงานการวิเคราะห์กระแสไฟฟ้า 3 เฟสและคุณภาพพลังงาน',
+    threePhaseCurrentAnalysis: 'การวิเคราะห์กระแสไฟฟ้า 3 เฟส',
+    datetime: 'วันที่/เวลา',
+    technician: 'ช่างเทคนิค',
+    installationRecommended: 'แนะนำให้ติดตั้ง',
+    installationNotRecommended: 'ไม่แนะนำให้ติดตั้ง',
+    additionalAnalysisRequired: 'ต้องการการวิเคราะห์เพิ่มเติม',
+    branch: 'สาขา',
+    customerLocation: 'สถานที่ของลูกค้า',
+    measurementEquipment: 'อุปกรณ์วัด',
+    measurementPeriod7Days: 'ระยะเวลาการวัด (7 วัน)',
+    electricalParametersAutoAnalyzed: 'พารามิเตอร์ไฟฟ้า (วิเคราะห์อัตโนมัติ)',
+    voltage: 'แรงดันไฟฟ้า',
+    frequency: 'ความถี่',
+    powerFactor: 'ตัวประกอบกำลัง',
+    totalHarmonicDistortionTHD: 'การผิดเพี้ยนฮาร์โมนิกทั้งหมด (THD)',
+    autoDetected: 'ตรวจจับอัตโนมัติ',
+    standard: 'มาตรฐาน',
+    calculated: 'คำนวณได้',
+    estimated: 'ประมาณการ',
+    threePhaseCurrentAnalysisInput: 'การวิเคราะห์กระแสไฟฟ้า 3 เฟส (กรอกค่าที่วัดได้)',
+    phaseBalance: 'ความสมดุลของเฟส',
+    imbalanceRate: 'อัตราความไม่สมดุล',
+    good: 'ดี',
+    fair: 'ปานกลาง',
+    poor: 'แย่',
+    analysisResults: 'ผลการวิเคราะห์',
+    result: 'ผลลัพธ์',
+    recommendedActions: 'การปฏิบัติที่แนะนำ',
+    notes: 'หมายเหตุ',
+    technicalInterpretation: 'การตีความทางเทคนิค',
+    recommendedProduct: 'ผลิตภัณฑ์ที่แนะนำ',
+    madeBy: 'ทำโดย',
+    date: 'วันที่',
+    selectProduct: 'เลือกผลิตภัณฑ์',
+    selectEngineer: 'เลือกวิศวกร',
+    approvalPending: 'รออนุมัติ',
+    approvalApproved: 'อนุมัติแล้ว',
+    requestApproval: 'ขออนุมัติ',
+    phaseDistribution: 'การกระจายกระแสตามเฟส',
+    l1Phase: 'เฟส L1',
+    l2Phase: 'เฟส L2', 
+    l3Phase: 'เฟส L3',
+    neutralLine: 'สายนิวทรัล',
+    ampere: 'A',
+    quantifiedCurrentAnalysis: 'การวิเคราะห์กระแสเชิงปริมาณ',
+    quantifiedVoltageAnalysis: 'การวิเคราะห์แรงดันเชิงปริมาณ',
+    quantifiedPowerAnalysis: 'การวิเคราะห์พลังงานเชิงปริมาณ',
+    enterPassword: 'ใส่รหัสผ่าน',
+    verifyPassword: 'ตรวจสอบรหัสผ่าน',
+    invalidPassword: 'รหัสผ่านไม่ถูกต้อง',
+    recommendationText: 'ความแตกต่างของกระแสระหว่างเฟส L3 และ L2 มาก จำเป็นต้องตรวจสอบระบบ UPS และจัดสรรโหลดใหม่',
+    notesText: 'ฮาร์โมนิสและความไม่สมดุลของเฟสเนื่องจากระบบ UPS ต้องปรับปรุงก่อนทบทวนใหม่',
+    technicalInterpretationText: 'ความไม่สมดุลของเฟสที่เกิน 10% โดยทั่วไปถือว่าไม่เหมาะสมในระบบ 3 เฟส ความไม่สมดุลสูงโดยทั่วไปเกิน 25% ในเฟส 1 บ่งบอกถึงการกระจายโหลดที่ไม่มีประสิทธิภาพ การสูญเสียที่เพิ่มขึ้น และความเครียดที่สูงขึ้นในอุปกรณ์ไฟฟ้าด้านบน',
+    // Additional analysis fields
+    additionalTestsRequired: 'การทดสอบเพิ่มเติมที่จำเป็น',
+    scheduledFollowUp: 'การติดตามที่กำหนดไว้',
+    additionalEquipmentNeeded: 'อุปกรณ์เพิ่มเติมที่ต้องการ',
+    estimatedCost: 'ประมาณการค่าใช้จ่าย',
+    riskAssessment: 'การประเมินความเสี่ยง',
+    harmonicAnalysis: 'การวิเคราะห์ฮาร์มอนิก',
+    powerQualityCheck: 'การตรวจสอบคุณภาพไฟฟ้า',
+    loadBalancing: 'การปรับสมดุลโหลด',
+    temperatureMonitoring: 'การตรวจสอบอุณหภูมิ',
+    cableIntegrityTest: 'การทดสอบความสมบูรณ์ของสาย',
+    followUpDate: 'วันที่ติดตาม',
+    assignedTechnician: 'ช่างที่ได้รับมอบหมาย',
+    priority: 'ความสำคัญ',
+    expectedDuration: 'ระยะเวลาที่คาดหมาย',
+    required: 'จำเป็น',
+    optional: 'ทางเลือก',
+    low: 'ต่ำ',
+    medium: 'ปานกลาง',
+    high: 'สูง',
+    critical: 'วิกฤต',
+    won: 'วอน'
+  }
+};
+
+// Custom Language Switcher for International Market Page (English & Korean only)
+const InternationalLanguageSwitcher = () => {
+  const { locale, setLocale } = useLocale();
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const t = translations[locale];
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const languages = [
+    { code: 'ko' as const, name: t.korean, flag: 'KR' as const },
+    { code: 'en' as const, name: t.english, flag: 'GB' as const }
+  ];
+
+  const currentLanguage = languages.find(lang => lang.code === locale) || languages[0];
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 rounded-lg transition-colors"
+        aria-label="Change language"
+      >
+        <Globe className="w-5 h-5 text-gray-600" />
+        <CountryFlag country={currentLanguage.flag} size="sm" />
+        <span className="text-sm font-medium text-gray-700">
+          {currentLanguage.name}
+        </span>
+      </button>
+
+      {isOpen && (
+        <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
+          {languages.map((language) => (
+            <button
+              key={language.code}
+              onClick={() => {
+                setLocale(language.code);
+                setIsOpen(false);
+              }}
+              className={`w-full flex items-center gap-3 px-4 py-2 text-sm hover:bg-gray-100 transition-colors ${
+                locale === language.code ? 'bg-blue-50 text-blue-600 font-medium' : 'text-gray-700'
+              }`}
+            >
+              <CountryFlag country={language.flag} size="sm" />
+              <span>{language.name}</span>
+              {locale === language.code && (
+                <span className="ml-auto text-blue-600">✓</span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Bill Creation Form Component
+interface BillCreationFormProps {
+  onSave: (billData: Partial<Bill>) => void;
+  onCancel: () => void;
+  analysisData: { customer: string; branch: string; engineer: string };
+  translations: any;
+  locale: string;
+}
+
+const BillCreationForm = ({ onSave, onCancel, analysisData, translations, locale }: BillCreationFormProps) => {
+  const [formData, setFormData] = useState({
+    customerName: analysisData.customer,
+    customerCountry: analysisData.branch,
+    contactPerson: analysisData.engineer,
+    email: '',
+    serviceFee: 1500,
+    equipmentCost: 25000,
+    installationCost: 5000,
+    dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    notes: ''
+  });
+
+  const totalAmount = formData.serviceFee + formData.equipmentCost + formData.installationCost;
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSave({ ...formData, totalAmount });
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            {locale === 'ko' ? '고객명' : 'Customer Name'}
+          </label>
+          <input
+            type="text"
+            value={formData.customerName}
+            onChange={(e) => setFormData({...formData, customerName: e.target.value})}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500"
+            required
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            {locale === 'ko' ? '이메일' : 'Email'}
+          </label>
+          <input
+            type="email"
+            value={formData.email}
+            onChange={(e) => setFormData({...formData, email: e.target.value})}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500"
+            placeholder="customer@example.com"
+            required
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            {translations.serviceFee} (USD)
+          </label>
+          <input
+            type="number"
+            value={formData.serviceFee}
+            onChange={(e) => setFormData({...formData, serviceFee: Number(e.target.value)})}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500"
+            min="0"
+            required
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            {translations.equipmentCost} (USD)
+          </label>
+          <input
+            type="number"
+            value={formData.equipmentCost}
+            onChange={(e) => setFormData({...formData, equipmentCost: Number(e.target.value)})}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500"
+            min="0"
+            required
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            {translations.installationCost} (USD)
+          </label>
+          <input
+            type="number"
+            value={formData.installationCost}
+            onChange={(e) => setFormData({...formData, installationCost: Number(e.target.value)})}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500"
+            min="0"
+            required
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            {translations.dueDate}
+          </label>
+          <input
+            type="date"
+            value={formData.dueDate}
+            onChange={(e) => setFormData({...formData, dueDate: e.target.value})}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500"
+            required
+          />
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          {locale === 'ko' ? '메모' : 'Notes'}
+        </label>
+        <textarea
+          value={formData.notes}
+          onChange={(e) => setFormData({...formData, notes: e.target.value})}
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500"
+          rows={3}
+          placeholder={locale === 'ko' ? '추가 메모를 입력하세요...' : 'Enter additional notes...'}
+        />
+      </div>
+
+      {/* Total Amount Display */}
+      <div className="bg-gray-50 rounded-lg p-4">
+        <div className="flex justify-between items-center text-xl font-bold">
+          <span>{translations.totalAmount}:</span>
+          <span className="text-green-600">USD ${totalAmount.toLocaleString()}</span>
+        </div>
+      </div>
+
+      {/* Action Buttons */}
+      <div className="flex gap-4">
+        <button
+          type="submit"
+          className="flex-1 bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-3 rounded-lg font-bold hover:from-blue-700 hover:to-blue-800 transition-all duration-200"
+        >
+          {locale === 'ko' ? '청구서 생성' : 'Create Bill'}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="flex-1 bg-gray-500 text-white px-6 py-3 rounded-lg font-bold hover:bg-gray-600 transition-all duration-200"
+        >
+          {locale === 'ko' ? '취소' : 'Cancel'}
+        </button>
+      </div>
+    </form>
+  );
+};
+
+export default function PreInstallationAnalysisPage(): JSX.Element {
+  const router = useRouter();
+  const { locale } = useLocale();
+  const t = translations[locale];
+  const at = analysisTranslations[locale as keyof typeof analysisTranslations] || analysisTranslations.en;
+  const [analysis, setAnalysis] = useState<AnalysisData>(sampleAnalysis);
+  const [selectedBranch, setSelectedBranch] = useState('Vietnam');
+  const [selectedCustomer, setSelectedCustomer] = useState('Ho Chi Minh City Office - UPS Room');
+  const [selectedEquipment, setSelectedEquipment] = useState('Fluke 438-II Motor Analyzer');
+  const [measurementStartDate, setMeasurementStartDate] = useState('2026-02-11');
+  const [measurementEndDate, setMeasurementEndDate] = useState('2026-02-18');
+  const [currentValues, setCurrentValues] = useState({
+    L1: 156.3, // Phase A from 7-day measurement
+    L2: 142.9, // Phase B from 7-day measurement  
+    L3: 168.7, // Phase C from 7-day measurement
+    N: 22.1
+  });
+  const [selectedProduct, setSelectedProduct] = useState('KSAVER 150KVA');
+  const [selectedEngineer, setSelectedEngineer] = useState('Engr. Patrick Jung');
+  const [engineerApprovalStatus, setEngineerApprovalStatus] = useState('approved'); // Patrick Jung is pre-approved
+  const [engineerPassword, setEngineerPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [isGeneratingDocument, setIsGeneratingDocument] = useState(false);
+  const [showExportOptions, setShowExportOptions] = useState(false);
+  const [showBillModal, setShowBillModal] = useState(false);
+  const [bills, setBills] = useState<Bill[]>([]);
+  const [showBillList, setShowBillList] = useState(false);
+  const [searchBillTerm, setSearchBillTerm] = useState('');
+  const [billStatusFilter, setBillStatusFilter] = useState('all');
+  
+  // Engineer passwords (in real app, this would be secure backend validation)
+  const engineerPasswords = {
+    'Engr. Patrick Jung': 'PJ2026',
+    'Engr. Sarah Kim': 'SK2026', 
+    'Engr. David Lee': 'DL2026',
+    'Engr. Maria Santos': 'MS2026'
+  };
+  
+  // Update analysis with dynamic values after hydration to prevent SSR mismatch
+  useEffect(() => {
+    setAnalysis((prevAnalysis) => ({
+      ...prevAnalysis,
+      id: generateDocumentNumber(),
+      datetime: getCurrentDateTime()
+    }));
+  }, []); // Empty dependency array - runs once after component mount
+  
+  const handlePasswordVerification = () => {
+    const correctPassword = engineerPasswords[selectedEngineer as keyof typeof engineerPasswords];
+    if (engineerPassword === correctPassword) {
+      setEngineerApprovalStatus('approved');
+      setPasswordError('');
+    } else {
+      setPasswordError('Invalid password');
+      setEngineerApprovalStatus('pending');
+    }
+  };
+
+  const handleEngineerChange = (engineer: string) => {
+    setSelectedEngineer(engineer);
+    setEngineerApprovalStatus('pending');
+    setEngineerPassword('');
+    setPasswordError('');
+  };
+
+  // Document creation functions
+  const handleCreateDocument = async () => {
+    if (engineerApprovalStatus !== 'approved') {
+      alert(at.engineerApprovalRequired || 'Engineer approval required');
+      return;
+    }
+    
+    setIsGeneratingDocument(true);
+    
+    try {
+      // Simulate document generation
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // In a real application, this would:
+      // 1. Generate a formatted PDF report
+      // 2. Save to database with unique ID
+      // 3. Send to appropriate stakeholders
+      
+      const documentId = generateDocumentNumber();
+      alert(`${at.documentCreated} - ${documentId}`);
+      setShowExportOptions(true);
+    } catch (error) {
+      console.error('Error creating document:', error);
+      alert('Error creating document. Please try again.');
+    } finally {
+      setIsGeneratingDocument(false);
+    }
+  };
+
+  const handlePrintDocument = () => {
+    window.print();
+  };
+
+  const handleGeneratePDF = () => {
+    // In a real application, this would generate and download a PDF
+    const element = document.getElementById('analysis-content');
+    if (element) {
+      // Use html2pdf or similar library to convert HTML to PDF
+      alert(`${at.generatePDF} - Feature would be implemented with html2pdf library`);
+    }
+  };
+
+  const handleEmailDocument = () => {
+    const subject = `Pre-Installation Analysis - ${generateDocumentNumber()}`;
+    const body = `Please find the attached pre-installation analysis report.\n\nBranch: ${selectedBranch}\nCustomer: ${selectedCustomer}\nEngineer: ${selectedEngineer}\nDate: ${getCurrentDateTime()}`;
+    const mailtoLink = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    window.open(mailtoLink);
+  };
+
+  // Bill management functions
+  const generateBillNumber = () => {
+    const date = new Date();
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+    return `IB-${year}-${month}${day}-${random}`;
+  };
+
+  const handleCreateBill = () => {
+    if (engineerApprovalStatus !== 'approved') {
+      alert('Engineer approval required to create bills');
+      return;
+    }
+    setShowBillModal(true);
+  };
+
+  const handleSaveBill = (billData: Partial<Bill>) => {
+    const newBill: Bill = {
+      id: Date.now().toString(),
+      billNumber: generateBillNumber(),
+      analysisId: analysis.id,
+      customerName: selectedCustomer,
+      customerCountry: selectedBranch,
+      contactPerson: selectedEngineer,
+      email: '',
+      analysisType: 'Pre-Installation Current Analysis',
+      serviceFee: billData.serviceFee || 1500,
+      equipmentCost: billData.equipmentCost || 25000,
+      installationCost: billData.installationCost || 5000,
+      totalAmount: (billData.serviceFee || 1500) + (billData.equipmentCost || 25000) + (billData.installationCost || 5000),
+      currency: 'USD',
+      dueDate: billData.dueDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      status: 'pending',
+      createdDate: new Date().toISOString().split('T')[0],
+      lastModified: new Date().toISOString().split('T')[0],
+      notes: billData.notes || '',
+      ...billData
+    };
+
+    setBills((prev) => [newBill, ...prev]);
+    setShowBillModal(false);
+    alert(`${at.billCreated} - ${newBill.billNumber}`);
+  };
+
+  const getBillStatusColor = (status: string) => {
+    switch (status) {
+      case 'pending': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+      case 'paid': return 'bg-green-100 text-green-800 border-green-200';
+      case 'overdue': return 'bg-red-100 text-red-800 border-red-200';
+      case 'cancelled': return 'bg-gray-100 text-gray-800 border-gray-200';
+      default: return 'bg-gray-100 text-gray-800 border-gray-200';
+    }
+  };
+
+  const getBillStatusText = (status: string) => {
+    switch (status) {
+      case 'pending': return at.pending;
+      case 'paid': return at.paid;
+      case 'overdue': return at.overdue;
+      case 'cancelled': return at.cancelled;
+      default: return status;
+    }
+  };
+
+  const filteredBills = bills.filter((bill) => {
+    const matchesSearch = bill.billNumber.toLowerCase().includes(searchBillTerm.toLowerCase()) ||
+                         bill.customerName.toLowerCase().includes(searchBillTerm.toLowerCase());
+    const matchesStatus = billStatusFilter === 'all' || bill.status === billStatusFilter;
+    return matchesSearch && matchesStatus;
+  });
+
+  const getResultIcon = (result: string) => {
+    switch (result) {
+      case 'Recommended':
+        return <CheckCircle className="w-6 h-6 text-green-600" />;
+      case 'Not Recommended':
+        return <XCircle className="w-6 h-6 text-red-600" />;
+      default:
+        return <AlertTriangle className="w-6 h-6 text-yellow-600" />;
+    }
+  };
+
+  const getResultColor = (result: string) => {
+    switch (result) {
+      case 'Recommended':
+        return 'text-green-700 bg-green-50 border-green-200';
+      case 'Not Recommended':
+        return 'text-red-700 bg-red-50 border-red-200';
+      default:
+        return 'text-yellow-700 bg-yellow-50 border-yellow-200';
+    }
+  };
+
+  const getBalanceColor = (balance: string) => {
+    switch (balance) {
+      case 'Good':
+        return 'text-green-700 bg-green-100';
+      case 'Fair':
+        return 'text-yellow-700 bg-yellow-100';
+      case 'Poor':
+        return 'text-red-700 bg-red-100';
+      default:
+        return 'text-gray-700 bg-gray-100';
+    }
+  };
+
+  // Sample data for branches, customers, and equipment
+  const branches = [
+    { id: 'vietnam', name: 'Vietnam', code: 'VN' },
+    { id: 'korea', name: 'Korea', code: 'KR' },
+    { id: 'thailand', name: 'Thailand', code: 'TH' },
+    { id: 'brunei', name: 'Brunei', code: 'BN' }
+  ];
+
+  const customersByBranch = {
+    Vietnam: [
+      'Ho Chi Minh City Office - UPS Room',
+      'Hanoi Manufacturing Plant - Main Panel',
+      'Da Nang Distribution Center - Power Room',
+      'Can Tho Factory - Production Line'
+    ],
+    Korea: [
+      'Seoul HQ Building - Main Panel',
+      'Busan Factory - Production Line A',
+      'Incheon Warehouse - Distribution Panel'
+    ],
+    Thailand: [
+      'Bangkok Warehouse - Cold Storage Unit',
+      'Phuket Resort - Main Distribution',
+      'Chiang Mai Factory - Assembly Line'
+    ],
+    Brunei: [
+      'Bandar Seri Begawan Office - Main Distribution',
+      'Kuala Belait Industrial - Power Station'
+    ]
+  };
+
+  const equipmentByBranch = {
+    Vietnam: [
+      'Fluke 438-II Motor Analyzer',
+      'Hioki PW3198 Power Analyzer',
+      'Yokogawa CW240 Clamp Power Meter'
+    ],
+    Korea: [
+      'Fluke 1760 Power Quality Analyzer',
+      'Hioki PW3198 Power Analyzer',
+      'Chauvin Arnoux CA 8335'
+    ],
+    Thailand: [
+      'Yokogawa CW240 Clamp Power Meter',
+      'Fluke 438-II Motor Analyzer'
+    ],
+    Brunei: [
+      'Chauvin Arnoux CA 8335',
+      'Hioki PW3198 Power Analyzer'
+    ]
+  };
+
+  // Available KSAVER products
+  const availableProducts = [
+    'KSAVER 50KVA',
+    'KSAVER 75KVA',
+    'KSAVER 100KVA',
+    'KSAVER 150KVA',
+    'KSAVER 200KVA',
+    'KSAVER 250KVA',
+    'KSAVER 300KVA',
+    'KSAVER PRO 150KVA',
+    'KSAVER PRO 200KVA'
+  ];
+
+  // Available engineers
+  const availableEngineers = [
+    'Engr. Patrick Jung',
+    'Engr. Kim Min-ho',
+    'Engr. Sarah Chen',
+    'Engr. Ahmad Rahman',
+    'Engr. Nguyen Duc',
+    'Engr. Somchai Naree',
+    'Engr. Maria Santos',
+    'Engr. John Smith'
+  ];
+
+  // Calculate phase balance analysis
+  const calculatePhaseBalance = () => {
+    const avg = (currentValues.L1 + currentValues.L2 + currentValues.L3) / 3;
+    const maxDeviation = Math.max(
+      Math.abs(currentValues.L1 - avg),
+      Math.abs(currentValues.L2 - avg),
+      Math.abs(currentValues.L3 - avg)
+    );
+    const deviationPercentage = (maxDeviation / avg) * 100;
+    
+    if (deviationPercentage <= 5) return 'Good';
+    if (deviationPercentage <= 10) return 'Fair';
+    return 'Poor';
+  };
+
+  // Calculate electrical parameters based on current values
+  const calculateElectricalParams = () => {
+    const totalCurrent = currentValues.L1 + currentValues.L2 + currentValues.L3;
+    const voltage = totalCurrent > 300 ? '480V' : totalCurrent > 200 ? '380V' : '240V';
+    const powerFactor = currentValues.N > 20 ? 0.82 : currentValues.N > 15 ? 0.85 : 0.92;
+    const thd = currentValues.N > 20 ? 8.2 : currentValues.N > 15 ? 7.8 : 4.5;
+    
+    return { voltage, powerFactor, thd };
+  };
+
+  const handleCurrentValueChange = (phase: 'L1' | 'L2' | 'L3' | 'N', value: number) => {
+    const newValues = { ...currentValues, [phase]: value };
+    setCurrentValues(newValues);
+    
+    // Update analysis data
+    const params = calculateElectricalParams();
+    const balance = calculatePhaseBalance();
+    
+    setAnalysis((prev) => ({
+      ...prev,
+      current: newValues,
+      voltage: params.voltage,
+      powerFactor: params.powerFactor,
+      thd: params.thd,
+      balance
+    }));
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-gray-100 to-gray-300">
+      {/* Header */}
+      <header className="bg-gradient-to-r from-gray-200 to-gray-100 shadow-xl border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-6 sm:px-8 lg:px-10">
+          <div className="flex justify-between items-center h-24">
+            <div className="flex items-center space-x-6">
+              <button 
+                onClick={() => router.back()}
+                className="p-4 hover:bg-gray-100 rounded-2xl transition-all duration-300 hover:shadow-lg group"
+              >
+                <ArrowLeft className="h-5 w-5 text-gray-600 group-hover:text-gray-800 transition-colors" />
+              </button>
+              <div className="flex items-center space-x-5">
+                <div className="p-4 bg-gradient-to-br from-orange-500 via-orange-600 to-red-700 rounded-2xl shadow-xl">
+                  <Zap className="h-8 w-8 text-white" />
+                </div>
+                <div>
+                  <h1 className="text-3xl font-black text-gray-900 bg-gradient-to-r from-orange-700 to-red-700 bg-clip-text text-transparent">
+                    {at.preInstallationCurrentAnalysis}
+                  </h1>
+                  <p className="text-base text-gray-600 font-medium mt-1">
+                    {at.threePhaseCurrentPowerQuality}
+                  </p>
+                </div>
+              </div>
+            </div>
+            <InternationalLanguageSwitcher />
+          </div>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <main className="max-w-7xl mx-auto px-6 sm:px-8 lg:px-10 py-10" id="analysis-content">
+        {/* Analysis Header Card */}
+        <div className="bg-white rounded-3xl shadow-xl border border-gray-200 p-8 mb-8">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h2 className="text-2xl font-black text-gray-800 mb-2">
+                {at.threePhaseCurrentAnalysis} - {analysis.id}
+              </h2>
+              <div className="flex items-center space-x-4 text-sm text-gray-600">
+                <span className="flex items-center">
+                  <FileText className="w-4 h-4 mr-1" />
+                  {analysis.datetime}
+                </span>
+                <span>{at.technician}: {analysis.technician}</span>
+              </div>
+            </div>
+            <div className="flex items-center space-x-3">
+              {getResultIcon(analysis.result)}
+              <span className={`px-4 py-2 rounded-xl font-bold border ${getResultColor(analysis.result)}`}>
+                {analysis.result === 'Recommended' ? at.installationRecommended : 
+                 analysis.result === 'Not Recommended' ? at.installationNotRecommended : 
+                 analysis.result === 'Further Analysis Required' ? at.additionalAnalysisRequired : analysis.result}
+              </span>
+            </div>
+          </div>
+
+          {/* Interactive Selection Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <div className="bg-gray-50 rounded-xl p-4">
+              <h3 className="text-sm font-bold text-gray-600 mb-2">{at.branch}</h3>
+              <select
+                value={selectedBranch}
+                onChange={(e) => {
+                  setSelectedBranch(e.target.value);
+                  setSelectedCustomer(customersByBranch[e.target.value as keyof typeof customersByBranch][0]);
+                  setSelectedEquipment(equipmentByBranch[e.target.value as keyof typeof equipmentByBranch][0]);
+                }}
+                className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm font-bold"
+              >
+                {branches.map(branch => (
+                  <option key={branch.id} value={branch.name}>{branch.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="bg-gray-50 rounded-xl p-4">
+              <h3 className="text-sm font-bold text-gray-600 mb-2">{at.customerLocation}</h3>
+              <select
+                value={selectedCustomer}
+                onChange={(e) => setSelectedCustomer(e.target.value)}
+                className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-xs font-bold"
+              >
+                {customersByBranch[selectedBranch as keyof typeof customersByBranch]?.map(customer => (
+                  <option key={customer} value={customer}>{customer}</option>
+                ))}
+              </select>
+            </div>
+            <div className="bg-gray-50 rounded-xl p-4">
+              <h3 className="text-sm font-bold text-gray-600 mb-2">{at.measurementEquipment}</h3>
+              <select
+                value={selectedEquipment}
+                onChange={(e) => setSelectedEquipment(e.target.value)}
+                className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-xs font-bold"
+              >
+                {equipmentByBranch[selectedBranch as keyof typeof equipmentByBranch]?.map(equipment => (
+                  <option key={equipment} value={equipment}>{equipment}</option>
+                ))}
+              </select>
+            </div>
+            <div className="bg-gray-50 rounded-xl p-4">
+              <h3 className="text-sm font-bold text-gray-600 mb-2">{at.measurementPeriod7Days}</h3>
+              <div className="space-y-1">
+                <input
+                  type="date"
+                  value={measurementStartDate}
+                  onChange={(e) => {
+                    setMeasurementStartDate(e.target.value);
+                    // Auto-calculate end date (7 days later)
+                    const startDate = new Date(e.target.value);
+                    startDate.setDate(startDate.getDate() + 7);
+                    setMeasurementEndDate(startDate.toISOString().split('T')[0]);
+                  }}
+                  className="w-full p-1 border border-gray-300 rounded text-xs font-bold"
+                />
+                <input
+                  type="date"
+                  value={measurementEndDate}
+                  readOnly
+                  className="w-full p-1 border border-gray-200 rounded text-xs font-bold bg-gray-100"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Electrical Parameters - Auto-calculated from measurements */}
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl p-6 mb-8">
+            <h3 className="text-xl font-bold text-gray-800 mb-6">{at.electricalParametersAutoAnalyzed}</h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+              <div className="text-center">
+                <div className="text-2xl font-black text-blue-600">{calculateElectricalParams().voltage}</div>
+                <div className="text-sm text-gray-600 font-bold">{at.voltage}</div>
+                <div className="text-xs text-gray-500">{at.autoDetected}</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-black text-green-600">{analysis.frequency} Hz</div>
+                <div className="text-sm text-gray-600 font-bold">{at.frequency}</div>
+                <div className="text-xs text-gray-500">{at.standard}</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-black text-purple-600">{calculateElectricalParams().powerFactor.toFixed(2)}</div>
+                <div className="text-sm text-gray-600 font-bold">{at.powerFactor}</div>
+                <div className="text-xs text-gray-500">{at.calculated}</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-black text-orange-600">{calculateElectricalParams().thd.toFixed(1)}%</div>
+                <div className="text-sm text-gray-600 font-bold">{at.totalHarmonicDistortionTHD}</div>
+                <div className="text-xs text-gray-500">{at.estimated}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Current Analysis - Input from measurement equipment */}
+          <div className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-2xl p-6">
+            <h3 className="text-xl font-bold text-gray-800 mb-6">{at.threePhaseCurrentAnalysisInput}</h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+              <div className="text-center bg-white rounded-xl p-4 shadow-sm">
+                <input
+                  type="number"
+                  step="0.1"
+                  value={currentValues.L1}
+                  onChange={(e) => handleCurrentValueChange('L1', parseFloat(e.target.value) || 0)}
+                  className="w-full text-2xl font-black text-red-600 text-center border-none bg-transparent focus:outline-none focus:ring-2 focus:ring-red-300 rounded"
+                />
+                <div className="text-xs text-gray-500">{at.ampere}</div>
+                <div className="text-sm text-gray-600 font-bold">{at.l1Phase}</div>
+              </div>
+              <div className="text-center bg-white rounded-xl p-4 shadow-sm">
+                <input
+                  type="number"
+                  step="0.1"
+                  value={currentValues.L2}
+                  onChange={(e) => handleCurrentValueChange('L2', parseFloat(e.target.value) || 0)}
+                  className="w-full text-2xl font-black text-green-600 text-center border-none bg-transparent focus:outline-none focus:ring-2 focus:ring-green-300 rounded"
+                />
+                <div className="text-xs text-gray-500">{at.ampere}</div>
+                <div className="text-sm text-gray-600 font-bold">{at.l2Phase}</div>
+              </div>
+              <div className="text-center bg-white rounded-xl p-4 shadow-sm">
+                <input
+                  type="number"
+                  step="0.1"
+                  value={currentValues.L3}
+                  onChange={(e) => handleCurrentValueChange('L3', parseFloat(e.target.value) || 0)}
+                  className="w-full text-2xl font-black text-blue-600 text-center border-none bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-300 rounded"
+                />
+                <div className="text-xs text-gray-500">{at.ampere}</div>
+                <div className="text-sm text-gray-600 font-bold">{at.l3Phase}</div>
+              </div>
+              <div className="text-center bg-white rounded-xl p-4 shadow-sm">
+                <input
+                  type="number"
+                  step="0.1"
+                  value={currentValues.N}
+                  onChange={(e) => handleCurrentValueChange('N', parseFloat(e.target.value) || 0)}
+                  className="w-full text-2xl font-black text-gray-600 text-center border-none bg-transparent focus:outline-none focus:ring-2 focus:ring-gray-300 rounded"
+                />
+                <div className="text-xs text-gray-500">{at.ampere}</div>
+                <div className="text-sm text-gray-600 font-bold">{at.neutralLine}</div>
+              </div>
+            </div>
+            <div className="flex items-center justify-center space-x-6">
+              <div className="flex items-center space-x-2">
+                <span className="text-sm font-bold text-gray-700">{at.phaseBalance}:</span>
+                <span className={`px-3 py-1 rounded-full text-sm font-bold ${getBalanceColor(calculatePhaseBalance())}`}>
+                  {calculatePhaseBalance() === 'Good' ? at.good : 
+                   calculatePhaseBalance() === 'Fair' ? at.fair : at.poor}
+                </span>
+              </div>
+              <div className="text-sm text-gray-600">
+                <span className="font-bold">{at.imbalanceRate}: </span>
+                <span className="font-black text-orange-600">
+                  {(() => {
+                    const avg = (currentValues.L1 + currentValues.L2 + currentValues.L3) / 3;
+                    const maxDev = Math.max(
+                      Math.abs(currentValues.L1 - avg),
+                      Math.abs(currentValues.L2 - avg),
+                      Math.abs(currentValues.L3 - avg)
+                    );
+                    return ((maxDev / avg) * 100).toFixed(1);
+                  })()}%
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Document Creation Section */}
+        <div className="bg-white rounded-3xl shadow-xl border border-gray-200 p-8 mt-8">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h2 className="text-2xl font-black text-gray-800 mb-2 flex items-center">
+                <FileText className="w-6 h-6 mr-3 text-blue-600" />
+                {at.createDocument}
+              </h2>
+              <p className="text-gray-600">
+                Generate official pre-installation analysis report
+              </p>
+            </div>
+            <div className="flex items-center space-x-3">
+              {engineerApprovalStatus === 'approved' ? (
+                <CheckCircle className="w-6 h-6 text-green-600" />
+              ) : (
+                <XCircle className="w-6 h-6 text-red-600" />
+              )}
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <button
+              onClick={handleCreateDocument}
+              disabled={engineerApprovalStatus !== 'approved' || isGeneratingDocument}
+              className={`p-4 rounded-xl font-bold text-white transition-all duration-200 flex items-center justify-center space-x-2 ${
+                engineerApprovalStatus === 'approved' && !isGeneratingDocument
+                  ? 'bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 shadow-lg hover:shadow-xl'
+                  : 'bg-gray-400 cursor-not-allowed'
+              }`}
+            >
+              {isGeneratingDocument ? (
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+              ) : (
+                <FileText className="w-5 h-5" />
+              )}
+              <span>{isGeneratingDocument ? 'Generating...' : at.createDocument}</span>
+            </button>
+
+            <button
+              onClick={handleGeneratePDF}
+              disabled={engineerApprovalStatus !== 'approved'}
+              className={`p-4 rounded-xl font-bold text-white transition-all duration-200 flex items-center justify-center space-x-2 ${
+                engineerApprovalStatus === 'approved'
+                  ? 'bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 shadow-lg hover:shadow-xl'
+                  : 'bg-gray-400 cursor-not-allowed'
+              }`}
+            >
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M6 2a2 2 0 00-2 2v12a2 2 0 002 2h8a2 2 0 002-2V7.414A2 2 0 0015.414 6L12 2.586A2 2 0 0010.586 2H6zm5 6a1 1 0 10-2 0v3.586l-1.293-1.293a1 1 0 10-1.414 1.414l3 3a1 1 0 001.414 0l3-3a1 1 0 00-1.414-1.414L11 11.586V8z" clipRule="evenodd" />
+              </svg>
+              <span>{at.generatePDF}</span>
+            </button>
+
+            <button
+              onClick={handlePrintDocument}
+              disabled={engineerApprovalStatus !== 'approved'}
+              className={`p-4 rounded-xl font-bold text-white transition-all duration-200 flex items-center justify-center space-x-2 ${
+                engineerApprovalStatus === 'approved'
+                  ? 'bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 shadow-lg hover:shadow-xl'
+                  : 'bg-gray-400 cursor-not-allowed'
+              }`}
+            >
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M5 4v3H4a2 2 0 00-2 2v3a2 2 0 002 2h1v2a2 2 0 002 2h6a2 2 0 002-2v-2h1a2 2 0 002-2V9a2 2 0 00-2-2h-1V4a2 2 0 00-2-2H7a2 2 0 00-2 2zm8 0H7v3h6V4zM5 14H4v-2h1v2zm1 0v2h6v-2H6zm0-1h8v-2H6v2z" clipRule="evenodd" />
+              </svg>
+              <span>{at.printDocument}</span>
+            </button>
+
+            <button
+              onClick={handleEmailDocument}
+              disabled={engineerApprovalStatus !== 'approved'}
+              className={`p-4 rounded-xl font-bold text-white transition-all duration-200 flex items-center justify-center space-x-2 ${
+                engineerApprovalStatus === 'approved'
+                  ? 'bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 shadow-lg hover:shadow-xl'
+                  : 'bg-gray-400 cursor-not-allowed'
+              }`}
+            >
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z" />
+                <path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z" />
+              </svg>
+              <span>{at.sendEmail}</span>
+            </button>
+
+            <button
+              onClick={handleCreateBill}
+              disabled={engineerApprovalStatus !== 'approved'}
+              className={`p-4 rounded-xl font-bold text-white transition-all duration-200 flex items-center justify-center space-x-2 ${
+                engineerApprovalStatus === 'approved'
+                  ? 'bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 shadow-lg hover:shadow-xl'
+                  : 'bg-gray-400 cursor-not-allowed'
+              }`}
+            >
+              <DollarSign className="w-5 h-5" />
+              <span>{at.createBill}</span>
+            </button>
+          </div>
+
+          {/* View Bills Button */}
+          <div className="mt-4">
+            <button
+              onClick={() => setShowBillList(!showBillList)}
+              className="w-full p-3 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white rounded-xl font-bold transition-all duration-200 flex items-center justify-center space-x-2"
+            >
+              <FileText className="w-5 h-5" />
+              <span>{at.viewBills} ({bills.length})</span>
+            </button>
+          </div>
+
+          {/* Status Messages */}
+          {engineerApprovalStatus !== 'approved' && (
+            <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-xl">
+              <div className="flex items-center">
+                <AlertTriangle className="w-5 h-5 text-yellow-600 mr-2" />
+                <span className="text-yellow-800 font-medium">
+                  Engineer approval required to create documents
+                </span>
+              </div>
+            </div>
+          )}
+
+          {showExportOptions && (
+            <div className="mt-6 p-6 bg-green-50 border border-green-200 rounded-xl">
+              <div className="flex items-center mb-3">
+                <CheckCircle className="w-5 h-5 text-green-600 mr-2" />
+                <span className="text-green-800 font-bold">
+                  {at.documentCreated}
+                </span>
+              </div>
+              <div className="text-sm text-green-700">
+                <p>Document ID: {generateDocumentNumber()}</p>
+                <p>Generated: {getCurrentDateTime()}</p>
+                <p>Approved by: {selectedEngineer}</p>
+                <p>Location: {selectedBranch} - {selectedCustomer}</p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Charts Section - Power Quality Analysis Report Style */
+        <div className="space-y-8 mb-8">
+          {/* Voltage Analysis */}
+          <VoltageAnalysisChart translations={at} />
+          
+          {/* Current Analysis */}
+          <CurrentWaveformChart data={analysis.current} translations={at} />
+          
+          {/* Power Analysis */}
+          <PowerAnalysisChart data={analysis.current} translations={at} />
+          
+          {/* Phase Balance Chart */}
+          <PhaseBalanceChart data={analysis.current} translations={at} />
+        </div>
+
+        {/* Analysis Results */}
+        <div className="bg-white rounded-3xl shadow-xl border border-gray-200 p-8">
+          <h2 className="text-2xl font-black text-gray-800 mb-6 flex items-center">
+            <FileText className="w-6 h-6 mr-3 text-blue-600" />
+            {at.analysisResults}
+          </h2>
+          
+          <div className="space-y-6">
+            <div className={`p-6 rounded-2xl border-2 ${getResultColor(analysis.result)}`}>
+              <div className="flex items-center space-x-3 mb-3">
+                {getResultIcon(analysis.result)}
+                <h3 className="text-lg font-bold">{at.result}:</h3>
+              </div>
+              <p className="text-xl font-black">
+                {analysis.result === 'Recommended' ? at.installationRecommended : 
+                 analysis.result === 'Not Recommended' ? at.installationNotRecommended : 
+                 analysis.result === 'Further Analysis Required' ? at.additionalAnalysisRequired : analysis.result}
+              </p>
+            </div>
+
+            <div className="bg-yellow-50 border-2 border-yellow-200 p-6 rounded-2xl">
+              <div className="flex items-center space-x-3 mb-3">
+                <Info className="w-5 h-5 text-yellow-600" />
+                <h3 className="text-lg font-bold text-yellow-800">{at.recommendedActions}:</h3>
+              </div>
+              <p className="text-yellow-900 font-medium">{at.recommendationText}</p>
+            </div>
+
+            <div className="bg-gray-50 border-2 border-gray-200 p-6 rounded-2xl">
+              <div className="flex items-center space-x-3 mb-3">
+                <FileText className="w-5 h-5 text-gray-600" />
+                <h3 className="text-lg font-bold text-gray-800">{at.notes}:</h3>
+              </div>
+              <p className="text-gray-700 font-medium">{at.notesText}</p>
+            </div>
+
+            {/* Additional Analysis Section - Only show when Further Analysis Required */}
+            {analysis.result === 'Further Analysis Required' && (
+              <div className="bg-gradient-to-br from-orange-50 via-red-50 to-orange-100 border-2 border-orange-300 p-8 rounded-3xl shadow-lg">
+                <div className="flex items-center space-x-4 mb-8">
+                  <div className="bg-orange-500 p-3 rounded-full">
+                    <AlertTriangle className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-black text-orange-900">{at.additionalTestsRequired}</h3>
+                    <p className="text-orange-700 font-medium">รายการทดสอบเพิ่มเติมที่จำเป็นต้องดำเนินการ</p>
+                  </div>
+                </div>
+                
+                {analysis.additionalTests && (
+                  <div className="bg-white rounded-2xl p-6 mb-6 shadow-md border border-orange-200">
+                    <h4 className="text-lg font-black text-gray-800 mb-4 flex items-center">
+                      <Activity className="w-5 h-5 mr-2 text-orange-600" />
+                      รายการการทดสอบ
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="bg-gradient-to-r from-red-50 to-red-100 p-4 rounded-xl border-l-4 border-red-500">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-3">
+                            <div className={`w-4 h-4 rounded-full ${analysis.additionalTests.harmonicAnalysis ? 'bg-red-500 ring-2 ring-red-200' : 'bg-gray-300'}`}></div>
+                            <span className="font-bold text-gray-800">{at.harmonicAnalysis}</span>
+                          </div>
+                          <span className={`px-3 py-1 rounded-full text-xs font-black ${analysis.additionalTests.harmonicAnalysis ? 'bg-red-200 text-red-800' : 'bg-gray-200 text-gray-600'}`}>
+                            {analysis.additionalTests.harmonicAnalysis ? '✓ ' + at.required : at.optional}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="bg-gradient-to-r from-red-50 to-red-100 p-4 rounded-xl border-l-4 border-red-500">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-3">
+                            <div className={`w-4 h-4 rounded-full ${analysis.additionalTests.powerQualityCheck ? 'bg-red-500 ring-2 ring-red-200' : 'bg-gray-300'}`}></div>
+                            <span className="font-bold text-gray-800">{at.powerQualityCheck}</span>
+                          </div>
+                          <span className={`px-3 py-1 rounded-full text-xs font-black ${analysis.additionalTests.powerQualityCheck ? 'bg-red-200 text-red-800' : 'bg-gray-200 text-gray-600'}`}>
+                            {analysis.additionalTests.powerQualityCheck ? '✓ ' + at.required : at.optional}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="bg-gradient-to-r from-red-50 to-red-100 p-4 rounded-xl border-l-4 border-red-500">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-3">
+                            <div className={`w-4 h-4 rounded-full ${analysis.additionalTests.loadBalancing ? 'bg-red-500 ring-2 ring-red-200' : 'bg-gray-300'}`}></div>
+                            <span className="font-bold text-gray-800">{at.loadBalancing}</span>
+                          </div>
+                          <span className={`px-3 py-1 rounded-full text-xs font-black ${analysis.additionalTests.loadBalancing ? 'bg-red-200 text-red-800' : 'bg-gray-200 text-gray-600'}`}>
+                            {analysis.additionalTests.loadBalancing ? '✓ ' + at.required : at.optional}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="bg-gradient-to-r from-gray-50 to-gray-100 p-4 rounded-xl border-l-4 border-gray-400">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-3">
+                            <div className={`w-4 h-4 rounded-full ${analysis.additionalTests.temperatureMonitoring ? 'bg-red-500 ring-2 ring-red-200' : 'bg-gray-300'}`}></div>
+                            <span className="font-bold text-gray-600">{at.temperatureMonitoring}</span>
+                          </div>
+                          <span className={`px-3 py-1 rounded-full text-xs font-black ${analysis.additionalTests.temperatureMonitoring ? 'bg-red-200 text-red-800' : 'bg-gray-200 text-gray-600'}`}>
+                            {analysis.additionalTests.temperatureMonitoring ? '✓ ' + at.required : at.optional}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="bg-gradient-to-r from-red-50 to-red-100 p-4 rounded-xl border-l-4 border-red-500">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-3">
+                            <div className={`w-4 h-4 rounded-full ${analysis.additionalTests.cableIntegrityTest ? 'bg-red-500 ring-2 ring-red-200' : 'bg-gray-300'}`}></div>
+                            <span className="font-bold text-gray-800">{at.cableIntegrityTest}</span>
+                          </div>
+                          <span className={`px-3 py-1 rounded-full text-xs font-black ${analysis.additionalTests.cableIntegrityTest ? 'bg-red-200 text-red-800' : 'bg-gray-200 text-gray-600'}`}>
+                            {analysis.additionalTests.cableIntegrityTest ? '✓ ' + at.required : at.optional}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Follow-up Schedule Card */}
+                {analysis.scheduledFollowUp && (
+                  <div className="bg-white rounded-2xl p-6 mb-6 shadow-md border border-orange-200">
+                    <h4 className="text-lg font-black text-gray-800 mb-4 flex items-center">
+                      <FileText className="w-5 h-5 mr-2 text-blue-600" />
+                      {at.scheduledFollowUp}
+                    </h4>
+                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-xl border border-blue-200">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-4">
+                          <div className="flex items-center space-x-3">
+                            <div className="bg-blue-500 p-2 rounded-full">
+                              <FileText className="w-4 h-4 text-white" />
+                            </div>
+                            <div>
+                              <span className="text-sm font-medium text-blue-600">{at.followUpDate}</span>
+                              <p className="text-lg font-black text-blue-900">{analysis.scheduledFollowUp.date}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center space-x-3">
+                            <div className="bg-green-500 p-2 rounded-full">
+                              <CheckCircle className="w-4 h-4 text-white" />
+                            </div>
+                            <div>
+                              <span className="text-sm font-medium text-green-600">{at.assignedTechnician}</span>
+                              <p className="text-lg font-black text-green-900">{analysis.scheduledFollowUp.technician}</p>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="space-y-4">
+                          <div className="flex items-center space-x-3">
+                            <div className="bg-orange-500 p-2 rounded-full">
+                              <AlertTriangle className="w-4 h-4 text-white" />
+                            </div>
+                            <div>
+                              <span className="text-sm font-medium text-orange-600">{at.priority}</span>
+                              <span className={`ml-2 px-3 py-1 rounded-full text-sm font-black ${
+                                analysis.scheduledFollowUp.priority === 'Critical' ? 'bg-red-200 text-red-800' :
+                                analysis.scheduledFollowUp.priority === 'High' ? 'bg-orange-200 text-orange-800' :
+                                analysis.scheduledFollowUp.priority === 'Medium' ? 'bg-yellow-200 text-yellow-800' :
+                                'bg-green-200 text-green-800'
+                              }`}>
+                                {analysis.scheduledFollowUp.priority === 'Critical' ? '🔴 ' + at.critical :
+                                 analysis.scheduledFollowUp.priority === 'High' ? '🟠 ' + at.high :
+                                 analysis.scheduledFollowUp.priority === 'Medium' ? '🟡 ' + at.medium : '🟢 ' + at.low}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex items-center space-x-3">
+                            <div className="bg-purple-500 p-2 rounded-full">
+                              <TrendingUp className="w-4 h-4 text-white" />
+                            </div>
+                            <div>
+                              <span className="text-sm font-medium text-purple-600">{at.expectedDuration}</span>
+                              <p className="text-lg font-black text-purple-900">{analysis.scheduledFollowUp.expectedDuration}</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Equipment and Cost Summary */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {analysis.additionalEquipment && (
+                    <div className="bg-white rounded-2xl p-6 shadow-md border border-orange-200">
+                      <h4 className="text-lg font-black text-gray-800 mb-4 flex items-center">
+                        <Zap className="w-5 h-5 mr-2 text-purple-600" />
+                        {at.additionalEquipmentNeeded}
+                      </h4>
+                      <div className="space-y-3">
+                        {analysis.additionalEquipment.map((equipment, index) => (
+                          <div key={index} className="bg-gradient-to-r from-purple-50 to-blue-50 p-3 rounded-lg border border-purple-200">
+                            <div className="flex items-center space-x-3">
+                              <div className="bg-purple-500 p-1 rounded-full">
+                                <span className="w-2 h-2 bg-white rounded-full block"></span>
+                              </div>
+                              <span className="font-medium text-gray-800">{equipment}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  <div className="space-y-4">
+                    {/* Cost Card */}
+                    <div className="bg-white rounded-2xl p-6 shadow-md border border-orange-200">
+                      <h4 className="text-lg font-black text-gray-800 mb-3 flex items-center">
+                        <BarChart3 className="w-5 h-5 mr-2 text-green-600" />
+                        {at.estimatedCost}
+                      </h4>
+                      {analysis.estimatedCost && (
+                        <div className="bg-gradient-to-r from-green-50 to-emerald-50 p-4 rounded-xl border border-green-200">
+                          <p className="text-3xl font-black text-green-700">
+                            ₩{analysis.estimatedCost.toLocaleString()}
+                          </p>
+                          <p className="text-sm text-green-600 font-medium">{at.won} (Korean Won)</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Risk Assessment Card */}
+                    <div className="bg-white rounded-2xl p-6 shadow-md border border-orange-200">
+                      <h4 className="text-lg font-black text-gray-800 mb-3 flex items-center">
+                        <Activity className="w-5 h-5 mr-2 text-red-600" />
+                        {at.riskAssessment}
+                      </h4>
+                      {analysis.riskAssessment && (
+                        <div className={`p-4 rounded-xl border-2 ${
+                          analysis.riskAssessment === 'High' ? 'bg-gradient-to-r from-red-50 to-red-100 border-red-300' :
+                          analysis.riskAssessment === 'Medium' ? 'bg-gradient-to-r from-yellow-50 to-yellow-100 border-yellow-300' :
+                          'bg-gradient-to-r from-green-50 to-green-100 border-green-300'
+                        }`}>
+                          <span className={`inline-flex items-center px-4 py-2 rounded-full text-lg font-black ${
+                            analysis.riskAssessment === 'High' ? 'bg-red-200 text-red-800' :
+                            analysis.riskAssessment === 'Medium' ? 'bg-yellow-200 text-yellow-800' :
+                            'bg-green-200 text-green-800'
+                          }`}>
+                            {analysis.riskAssessment === 'High' ? '⚠️ ' + at.high :
+                             analysis.riskAssessment === 'Medium' ? '⚡ ' + at.medium : '✅ ' + at.low}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Technical Interpretation - matching the image format */}
+            <div className="bg-blue-50 border-2 border-blue-200 p-6 rounded-2xl">
+              <div className="flex items-center space-x-3 mb-3">
+                <Activity className="w-5 h-5 text-blue-600" />
+                <h3 className="text-lg font-bold text-blue-800">{at.technicalInterpretation}:</h3>
+              </div>
+              <p className="text-blue-900 font-medium">
+                {at.technicalInterpretationText}
+              </p>
+              <div className="mt-4 p-4 bg-blue-100 rounded-lg">
+                {/* Product Selection */}
+                {/* Product Selection */}
+                <div className="mb-3">
+                  <label className="text-sm font-bold text-blue-800 mb-2 block">{at.recommendedProduct}:</label>
+                  <select
+                    value={selectedProduct}
+                    onChange={(e) => setSelectedProduct(e.target.value)}
+                    className="w-full p-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm font-bold text-blue-800 bg-white"
+                  >
+                    {availableProducts.map(product => (
+                      <option key={product} value={product}>{product}</option>
+                    ))}
+                  </select>
+                </div>
+                
+                {/* Engineer Selection with Password Approval */}
+                <div className="mb-3">
+                  <label className="text-sm font-bold text-blue-800 mb-2 block">{at.madeBy}:</label>
+                  <div className="flex items-center space-x-2 mb-2">
+                    <select
+                      value={selectedEngineer}
+                      onChange={(e) => handleEngineerChange(e.target.value)}
+                      className="flex-1 p-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-xs font-bold text-blue-800 bg-white"
+                    >
+                      {availableEngineers.map(engineer => (
+                        <option key={engineer} value={engineer}>{engineer}</option>
+                      ))}
+                    </select>
+                    <span className={`px-3 py-2 rounded-lg text-xs font-bold ${
+                      engineerApprovalStatus === 'approved' 
+                        ? 'bg-green-200 text-green-800' 
+                        : 'bg-yellow-200 text-yellow-800'
+                    }`}>
+                      {engineerApprovalStatus === 'approved' ? at.approvalApproved : at.approvalPending}
+                    </span>
+                  </div>
+                  
+                  {/* Password Verification */}
+                  {selectedEngineer !== 'Select Engineer' && selectedEngineer !== 'Engr. Patrick Jung' && engineerApprovalStatus === 'pending' && (
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="password"
+                        value={engineerPassword}
+                        onChange={(e) => setEngineerPassword(e.target.value)}
+                        placeholder={at.enterPassword}
+                        className="flex-1 p-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-xs bg-white"
+                      />
+                      <button
+                        onClick={handlePasswordVerification}
+                        className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-colors"
+                      >
+                        {at.verifyPassword}
+                      </button>
+                    </div>
+                  )}
+                  
+                  {passwordError && (
+                    <p className="text-red-600 text-xs mt-1 font-medium">{at.invalidPassword}</p>
+                  )}
+                </div>
+                
+                {/* Automatic Current Date */}
+                <div className="text-xs text-blue-700">
+                  {at.date}: {getCurrentDateTime().split(' ')[0]}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Bill Management Section */
+        {showBillList && (
+          <div className="bg-white rounded-3xl shadow-xl border border-gray-200 p-8 mt-8">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-2xl font-black text-gray-800 mb-2 flex items-center">
+                  <DollarSign className="w-6 h-6 mr-3 text-green-600" />
+                  {at.billManagement}
+                </h2>
+                <p className="text-gray-600">
+                  Manage bills for pre-installation analysis services
+                </p>
+              </div>
+            </div>
+
+            {/* Bill Controls */}
+            <div className="bg-gray-50 rounded-xl p-4 mb-6">
+              <div className="flex flex-wrap items-center gap-4 justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="relative">
+                    <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                    <input
+                      type="text"
+                      placeholder={locale === 'ko' ? '청구서 번호, 고객명 검색...' : 'Search bill number, customer...'}
+                      value={searchBillTerm}
+                      onChange={(e) => setSearchBillTerm(e.target.value)}
+                      className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-80"
+                    />
+                  </div>
+                  <select 
+                    value={billStatusFilter} 
+                    onChange={(e) => setBillStatusFilter(e.target.value)}
+                    className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="all">{locale === 'ko' ? '모든 상태' : 'All Status'}</option>
+                    <option value="pending">{at.pending}</option>
+                    <option value="paid">{at.paid}</option>
+                    <option value="overdue">{at.overdue}</option>
+                    <option value="cancelled">{at.cancelled}</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Bills List */}
+            {filteredBills.length > 0 ? (
+              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          {at.billNumber}
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          {locale === 'ko' ? '고객 정보' : 'Customer'}
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          {at.totalAmount}
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          {at.dueDate}
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          {at.billStatus}
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          {locale === 'ko' ? '작업' : 'Actions'}
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {filteredBills.map((bill) => (
+                        <tr key={bill.id} className="hover:bg-gray-50">
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className="text-sm font-medium text-gray-900">{bill.billNumber}</span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div>
+                              <div className="text-sm font-medium text-gray-900">{bill.customerName}</div>
+                              <div className="text-sm text-gray-500">{bill.customerCountry}</div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm font-medium text-gray-900">
+                              {bill.currency} ${bill.totalAmount.toLocaleString()}
+                            </div>
+                            <div className="text-sm text-gray-500">
+                              Service: ${bill.serviceFee.toLocaleString()}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className="text-sm text-gray-900">{bill.dueDate}</span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full border ${getBillStatusColor(bill.status)}`}>
+                              {getBillStatusText(bill.status)}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                            <div className="flex items-center space-x-3">
+                              <button className="text-blue-600 hover:text-blue-900">
+                                <Eye className="w-4 h-4" />
+                              </button>
+                              <button className="text-green-600 hover:text-green-900">
+                                <Edit className="w-4 h-4" />
+                              </button>
+                              <button className="text-gray-600 hover:text-gray-900">
+                                <Download className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <DollarSign className="mx-auto h-12 w-12 text-gray-400" />
+                <h3 className="mt-2 text-sm font-medium text-gray-900">
+                  {locale === 'ko' ? '청구서 없음' : 'No bills found'}
+                </h3>
+                <p className="mt-1 text-sm text-gray-500">
+                  {locale === 'ko' ? '첫 번째 청구서를 생성해보세요' : 'Create your first bill to get started'}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Bill Creation Modal */}
+        {showBillModal && (
+          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-2xl p-8 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-2xl font-bold text-gray-900 flex items-center">
+                  <DollarSign className="w-6 h-6 mr-2 text-green-600" />
+                  {at.newBill}
+                </h3>
+                <button 
+                  onClick={() => setShowBillModal(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <XCircle className="w-6 h-6" />
+                </button>
+              </div>
+              
+              <BillCreationForm 
+                onSave={handleSaveBill} 
+                onCancel={() => setShowBillModal(false)}
+                analysisData={{
+                  customer: selectedCustomer,
+                  branch: selectedBranch,
+                  engineer: selectedEngineer
+                }}
+                translations={at}
+                locale={locale}
+              />
+            </div>
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}

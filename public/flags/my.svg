@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+  <defs>
+    <clipPath id="my-circle">
+      <circle cx="36" cy="36" r="36"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#my-circle)">
+    <rect width="72" height="72" fill="#fff"/>
+    <g fill="#c8102e">
+      <rect y="0" width="72" height="5.54"/>
+      <rect y="11.08" width="72" height="5.54"/>
+      <rect y="22.16" width="72" height="5.54"/>
+      <rect y="33.24" width="72" height="5.54"/>
+      <rect y="44.32" width="72" height="5.54"/>
+      <rect y="55.4" width="72" height="5.54"/>
+      <rect y="66.48" width="72" height="5.54"/>
+    </g>
+    <rect width="38" height="38.5" fill="#012a87"/>
+    <path fill="#ffcd00" d="M16 10.5a11.5 11.5 0 1 0 0 17.2 9.2 9.2 0 1 1 0-17.2z"/>
+    <path fill="#ffcd00" d="M25.5 19.1l2.1 1.2 2.4-.5-.7 2.3 1.3 2-2.5.2-1.5 2-1-2.2-2.4-.8 2-1.6-.1-2.5 2.2 1.2z"/>
+  </g>
+</svg>

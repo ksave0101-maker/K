@@ -1,0 +1,25 @@
+-- ตาราง Stock Card (SC) - การ์ดสินค้า (บันทึกการเคลื่อนไหวสต๊อค)
+CREATE TABLE IF NOT EXISTS `stock_cards` (
+  `scID` int NOT NULL AUTO_INCREMENT,
+  `scNo` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `scDate` date DEFAULT NULL,
+  `product_id` int DEFAULT NULL,
+  `product_code` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `product_name` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `transaction_type` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `reference_no` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `quantity_in` decimal(10,2) DEFAULT 0.00,
+  `quantity_out` decimal(10,2) DEFAULT 0.00,
+  `balance` decimal(10,2) DEFAULT 0.00,
+  `unit` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT 'pcs',
+  `unit_cost` decimal(12,2) DEFAULT 0.00,
+  `location` varchar(150) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `notes` text COLLATE utf8mb4_unicode_ci,
+  `created_by` varchar(150) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`scID`),
+  UNIQUE KEY `scNo` (`scNo`),
+  KEY `idx_product_id` (`product_id`),
+  KEY `idx_product_code` (`product_code`),
+  KEY `idx_transaction_type` (`transaction_type`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

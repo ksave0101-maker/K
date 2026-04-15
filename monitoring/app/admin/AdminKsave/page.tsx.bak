@@ -1,0 +1,12 @@
+"use client"
+
+import React from 'react'
+
+export default function AdminPage(): React.ReactElement {
+  return (
+    <div style={{ padding: 20 }}>
+      <h3>Admin</h3>
+      <p>This is a minimal admin page. Filters and table will be reintroduced after we confirm this compiles cleanly.</p>
+    </div>
+  )
+}
