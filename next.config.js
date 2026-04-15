@@ -34,6 +34,12 @@ const nextConfig = {
   },
   async redirects() {
     return [
+      // Redirect root to ngrok main-login
+      {
+        source: '/',
+        destination: 'https://unconsumptive-nonexcitably-bobbye.ngrok-free.dev/main-login',
+        permanent: false,
+      },
       // Canonical URL for Thailand branch document system
       {
         source: '/KR-Thailand/Admin-Login/documents/:path*',
