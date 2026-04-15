@@ -37,7 +37,7 @@ const nextConfig = {
       // Redirect root to ngrok main-login
       {
         source: '/',
-        destination: 'https://unconsumptive-nonexcitably-bobbye.ngrok-free.dev/main-login',
+        destination: 'https://k-energy.ngrok.app/main-login',
         permanent: false,
       },
       // Canonical URL for Thailand branch document system
