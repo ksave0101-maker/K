@@ -107,6 +107,8 @@ export async function POST(req: NextRequest) {
         [u.userId, u.name, '/main-login']
       ).catch(() => {})
 
+      console.log(`[mysql-proxy] login success for ${u.userName} (id=${u.userId})`)
+
       const token = Buffer.from(`${u.userId}-${Date.now()}-${Math.random()}`).toString('base64')
 
       return NextResponse.json({

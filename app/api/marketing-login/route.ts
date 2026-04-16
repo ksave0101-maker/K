@@ -65,6 +65,7 @@ export async function POST(request: NextRequest) {
     }
 
     // ล็อกอินสำเร็จ - ส่งข้อมูล user กลับ (ไม่รวม password)
+    console.log(`[marketing-login] success for ${user.userName} (id=${user.userId})`)
     return NextResponse.json({
       success: true,
       user: {

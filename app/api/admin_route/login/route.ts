@@ -70,6 +70,9 @@ export async function POST(req: Request) {
         console.warn('⚠️ Failed to reach InfluxDB, but proceeding with login')
       }
 
+      // Log success for debugging
+      console.log(`Login success for ${user.userName} (userId=${user.userId})`)
+
       const token = `admin-token-${user.userId}-${Date.now()}`
       return NextResponse.json({
         token,
