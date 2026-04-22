@@ -70,6 +70,68 @@ export default function ThailandPreInstallationAnalysis() {
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
 
+  // Per-meter per-phase upload
+  const [selectedMeter, setSelectedMeter] = useState<1 | 2>(1);
+  const [phaseFiles, setPhaseFiles] = useState<{ [meter: number]: { L1: File | null; L2: File | null; L3: File | null } }>({
+    1: { L1: null, L2: null, L3: null },
+    2: { L1: null, L2: null, L3: null },
+  });
+  const [phaseDragging, setPhaseDragging] = useState<{ [key: string]: boolean }>({});
+
+  // AI parse state
+  type PhaseRecord = { record_time: string; value: number; voltage: string; pf: string };
+  type PhaseResult = { count: number; summary: { avg: number; peak: number; min: number }; preview: any[]; records: PhaseRecord[] };
+  const [parseLoading, setParseLoading] = useState<{ [key: string]: boolean }>({});
+  const [parseResults, setParseResults] = useState<{ [key: string]: PhaseResult }>({});
+  const [parseError, setParseError] = useState<{ [key: string]: string }>({});
+  const [activeBatchIdUpload, setActiveBatchIdUpload] = useState<string>(`batch_${Date.now()}`);
+  const [showDetailTable, setShowDetailTable] = useState(false);
+
+  const setPhaseFile = (meter: number, phase: 'L1' | 'L2' | 'L3', file: File | null) => {
+    setPhaseFiles(prev => ({ ...prev, [meter]: { ...prev[meter], [phase]: file } }));
+    // clear previous result for this slot
+    const key = `${meter}-${phase}`;
+    setParseResults(prev => { const n = { ...prev }; delete n[key]; return n; });
+    setParseError(prev => { const n = { ...prev }; delete n[key]; return n; });
+    if (file) {
+      setUploadedFiles(prev => [...prev.filter(f => f.name !== file.name), file]);
+    }
+  };
+
+  const parsePhaseFile = async (meter: number, phase: 'L1' | 'L2' | 'L3') => {
+    const file = phaseFiles[meter][phase];
+    if (!file) return;
+    const key = `${meter}-${phase}`;
+    setParseLoading(prev => ({ ...prev, [key]: true }));
+    setParseError(prev => { const n = { ...prev }; delete n[key]; return n; });
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('meter', String(meter));
+      fd.append('phase', phase);
+      fd.append('batchId', activeBatchIdUpload);
+      const res = await fetch('/api/thailand/pre-install-parse-file', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Parse failed');
+      setParseResults(prev => ({ ...prev, [key]: data }));
+    } catch (e: any) {
+      setParseError(prev => ({ ...prev, [key]: e.message }));
+    } finally {
+      setParseLoading(prev => ({ ...prev, [key]: false }));
+    }
+  };
+
+  const parseAllPhasesForMeter = async (meter: number) => {
+    const newBatchId = `batch_${Date.now()}`;
+    setActiveBatchIdUpload(newBatchId);
+    setShowDetailTable(false);
+    for (const phase of ['L1', 'L2', 'L3'] as const) {
+      if (phaseFiles[meter][phase]) await parsePhaseFile(meter, phase);
+    }
+    setShowDetailTable(true);
+    setUploadSuccess(lang === 'th' ? 'Generate เสร็จแล้ว บันทึกลงฐานข้อมูลเรียบร้อย' : 'Generated and saved to database successfully');
+  };
+
   // ---- Customer Current Record Batches ----
   interface CurrentRecord {
     id: number;
@@ -91,16 +153,8 @@ export default function ThailandPreInstallationAnalysis() {
     records: CurrentRecord[];
   }
 
-  const BATCH_KEY = 'pre_install_current_batches';
-  const loadBatches = (): CurrentBatch[] => {
-    if (typeof window === 'undefined') return [];
-    try { return JSON.parse(localStorage.getItem(BATCH_KEY) || '[]'); } catch { return []; }
-  };
-  const [batches, setBatches] = useState<CurrentBatch[]>(loadBatches);
-  const [activeBatchId, setActiveBatchId] = useState<string | null>(() => {
-    const b = loadBatches();
-    return b.length > 0 ? b[0].batchId : null;
-  });
+  const [batches, setBatches] = useState<CurrentBatch[]>([]);
+  const [activeBatchId, setActiveBatchId] = useState<string | null>(null);
   const [newCustomerName, setNewCustomerName] = useState('');
   const [newCustomerLocation, setNewCustomerLocation] = useState('');
   const [showNewCustomerForm, setShowNewCustomerForm] = useState(false);
@@ -140,7 +194,11 @@ export default function ThailandPreInstallationAnalysis() {
 
   const saveBatches = (updated: CurrentBatch[]) => {
     setBatches(updated);
-    localStorage.setItem(BATCH_KEY, JSON.stringify(updated));
+    fetch('/api/thailand/pre-install-batches', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ batches: updated }),
+    }).catch(() => {});
   };
 
   const activeBatch = batches.find(b => b.batchId === activeBatchId) ?? null;
@@ -168,8 +226,9 @@ export default function ThailandPreInstallationAnalysis() {
   const deleteBatch = (batchId: string) => {
     if (!confirm(lang === 'th' ? 'ยืนยันการลบชุดข้อมูลนี้?' : 'Delete this batch?')) return;
     const updated = batches.filter(b => b.batchId !== batchId);
-    saveBatches(updated);
+    setBatches(updated);
     setActiveBatchId(updated.length > 0 ? updated[0].batchId : null);
+    fetch(`/api/thailand/pre-install-batches?batchId=${encodeURIComponent(batchId)}`, { method: 'DELETE' }).catch(() => {});
   };
 
   const updateBatchRecord = (batchId: string, recordId: number, field: keyof CurrentRecord, value: string) => {
@@ -245,12 +304,24 @@ export default function ThailandPreInstallationAnalysis() {
     { id: 'korea', name: lang === 'th' ? 'เกาหลี' : 'Korea', countryCode: 'KR' as const },
   ];
 
+  // Load analyses and batches from MySQL on mount
   useEffect(() => {
-    // Load saved analyses
-    const savedData = localStorage.getItem('thailand_pre_installation_analyses');
-    if (savedData) {
-      setAnalyses(JSON.parse(savedData));
-    }
+    fetch('/api/thailand/pre-install-analysis')
+      .then(r => r.json())
+      .then(d => { if (d.analyses) setAnalyses(d.analyses.map((a: any) => ({
+        ...a,
+        current: { L1: a.current_L1, L2: a.current_L2, L3: a.current_L3, N: a.current_N },
+      }))); })
+      .catch(() => {});
+    fetch('/api/thailand/pre-install-batches')
+      .then(r => r.json())
+      .then(d => {
+        if (d.batches && d.batches.length > 0) {
+          setBatches(d.batches);
+          setActiveBatchId(d.batches[0].batchId);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   // ── CSV parser for 30-second interval data ──────────────────────────────
@@ -351,37 +422,45 @@ export default function ThailandPreInstallationAnalysis() {
     }
   };
 
-  const handleSave = () => {
-    const newAnalyses = [...analyses, formData];
-    setAnalyses(newAnalyses);
-    localStorage.setItem('thailand_pre_installation_analyses', JSON.stringify(newAnalyses));
-
-    // Reset form
-    setFormData({
-      id: generateDocumentNumber(),
-      branch: 'Thailand',
-      location: '',
-      equipment: 'Fluke 438-II Motor Analyzer',
-      datetime: getCurrentDateTime(),
-      measurementPeriod: '7 days',
-      technician: '',
-      voltage: '380',
-      frequency: 50.0,
-      powerFactor: 0.85,
-      thd: 0,
-      current: { L1: 0, L2: 0, L3: 0, N: 0 },
-      balance: 'Good',
-      result: 'Recommended',
-      recommendation: '',
-      notes: '',
-      engineerName: '',
-      engineerLicense: '',
-      approvalStatus: 'Pending',
-      approvalDate: getCurrentDateTime(),
-      approverName: '',
-    });
-
-    alert(lang === 'th' ? 'บันทึกข้อมูลเรียบร้อยแล้ว' : 'Data saved successfully');
+  const handleSave = async () => {
+    try {
+      const res = await fetch('/api/thailand/pre-install-analysis', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData),
+      });
+      if (!res.ok) throw new Error('save failed');
+      setAnalyses(prev => {
+        const exists = prev.find(a => a.id === formData.id);
+        return exists ? prev.map(a => a.id === formData.id ? formData : a) : [...prev, formData];
+      });
+      setFormData({
+        id: generateDocumentNumber(),
+        branch: 'Thailand',
+        location: '',
+        equipment: 'Fluke 438-II Motor Analyzer',
+        datetime: getCurrentDateTime(),
+        measurementPeriod: '7 days',
+        technician: '',
+        voltage: '380',
+        frequency: 50.0,
+        powerFactor: 0.85,
+        thd: 0,
+        current: { L1: 0, L2: 0, L3: 0, N: 0 },
+        balance: 'Good',
+        result: 'Recommended',
+        recommendation: '',
+        notes: '',
+        engineerName: '',
+        engineerLicense: '',
+        approvalStatus: 'Pending',
+        approvalDate: getCurrentDateTime(),
+        approverName: '',
+      });
+      alert(lang === 'th' ? 'บันทึกข้อมูลเรียบร้อยแล้ว' : 'Data saved successfully');
+    } catch {
+      alert(lang === 'th' ? 'เกิดข้อผิดพลาดในการบันทึก' : 'Failed to save data');
+    }
   };
 
   const t = {
@@ -509,52 +588,164 @@ export default function ThailandPreInstallationAnalysis() {
                   : 'Upload 7-day pre-installation current test data files (CSV / Excel / PDF)'}
               </p>
 
-              {/* Drop Zone */}
-              <div
-                onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-                onDragLeave={() => setIsDragging(false)}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  setIsDragging(false);
-                  setUploadError(null);
-                  setUploadSuccess(null);
-                  const files = Array.from(e.dataTransfer.files);
-                  const allowed = files.filter(f => f.name.match(/\.(csv|xlsx|xls|pdf)$/i));
-                  if (allowed.length < files.length) setUploadError(lang === 'th' ? 'รองรับเฉพาะไฟล์ CSV, Excel และ PDF เท่านั้น' : 'Only CSV, Excel and PDF files are supported');
-                  if (allowed.length > 0) {
-                    setUploadedFiles(prev => [...prev, ...allowed]);
-                    setUploadSuccess(lang === 'th' ? `อัพโหลด ${allowed.length} ไฟล์เรียบร้อยแล้ว` : `${allowed.length} file(s) uploaded successfully`);
-                    parseCSVFiles(allowed);
-                  }
-                }}
-                className={`border-2 border-dashed rounded-xl p-12 text-center transition-colors cursor-pointer ${
-                  isDragging ? 'border-green-500 bg-green-50' : 'border-gray-300 bg-gray-50 hover:border-green-400 hover:bg-green-50'
-                }`}
-                onClick={() => document.getElementById('file-input')?.click()}
-              >
-                <input
-                  id="file-input"
-                  type="file"
-                  multiple
-                  accept=".csv,.xlsx,.xls,.pdf"
-                  className="hidden"
-                  onChange={(e) => {
-                    setUploadError(null);
-                    setUploadSuccess(null);
-                    const files = Array.from(e.target.files || []);
-                    if (files.length > 0) {
-                      setUploadedFiles(prev => [...prev, ...files]);
-                      setUploadSuccess(lang === 'th' ? `อัพโหลด ${files.length} ไฟล์เรียบร้อยแล้ว` : `${files.length} file(s) uploaded successfully`);
-                      parseCSVFiles(files);
-                    }
-                  }}
-                />
-                <Upload className="w-14 h-14 text-gray-400 mx-auto mb-4" />
-                <p className="text-lg font-semibold text-gray-700 mb-1">
-                  {lang === 'th' ? 'ลากไฟล์มาวางที่นี่ หรือคลิกเพื่อเลือกไฟล์' : 'Drag & drop files here, or click to select'}
-                </p>
-                <p className="text-sm text-gray-400">{lang === 'th' ? 'รองรับ CSV, Excel (.xlsx), PDF' : 'Supports CSV, Excel (.xlsx), PDF'}</p>
+              {/* Meter Selector */}
+              <div className="flex items-center gap-3 mb-6">
+                <span className="text-sm font-semibold text-gray-700">{lang === 'th' ? 'เลือกมิเตอร์:' : 'Select Meter:'}</span>
+                {([1, 2] as const).map(m => (
+                  <button
+                    key={m}
+                    onClick={() => setSelectedMeter(m)}
+                    className={`px-5 py-2 rounded-lg font-semibold border-2 transition-all ${
+                      selectedMeter === m
+                        ? 'bg-green-600 text-white border-green-600 shadow'
+                        : 'bg-white text-gray-600 border-gray-300 hover:border-green-400'
+                    }`}
+                  >
+                    {lang === 'th' ? `มิเตอร์ ${m}` : `Meter ${m}`}
+                  </button>
+                ))}
+                {/* indicator if both meters have files */}
+                {([1, 2] as const).map(m => {
+                  const mf = phaseFiles[m];
+                  const count = [mf.L1, mf.L2, mf.L3].filter(Boolean).length;
+                  return count > 0 ? (
+                    <span key={m} className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded-full font-medium">
+                      {lang === 'th' ? `มิเตอร์ ${m}: ${count}/3 เฟส` : `Meter ${m}: ${count}/3 phases`}
+                    </span>
+                  ) : null;
+                })}
               </div>
+
+              {/* Phase Upload Zones */}
+              <div className="grid grid-cols-3 gap-4">
+                {(['L1', 'L2', 'L3'] as const).map((phase, pi) => {
+                  const phaseColors = [
+                    { border: 'border-blue-400', bg: 'bg-blue-50', dot: 'bg-blue-500', text: 'text-blue-700', activeBg: 'bg-blue-100' },
+                    { border: 'border-yellow-400', bg: 'bg-yellow-50', dot: 'bg-yellow-500', text: 'text-yellow-700', activeBg: 'bg-yellow-100' },
+                    { border: 'border-red-400', bg: 'bg-red-50', dot: 'bg-red-500', text: 'text-red-700', activeBg: 'bg-red-100' },
+                  ][pi];
+                  const file = phaseFiles[selectedMeter][phase];
+                  const dragKey = `${selectedMeter}-${phase}`;
+                  const dragging = !!phaseDragging[dragKey];
+                  const inputId = `phase-input-${selectedMeter}-${phase}`;
+                  return (
+                    <div key={phase}>
+                      <div className={`flex items-center gap-2 mb-2`}>
+                        <div className={`w-3 h-3 rounded-full ${phaseColors.dot}`} />
+                        <span className={`font-bold text-base ${phaseColors.text}`}>{phase}</span>
+                        <span className="text-xs text-gray-400">{lang === 'th' ? 'เฟส' : 'Phase'} {pi + 1}</span>
+                      </div>
+                      <div
+                        onDragOver={(e) => { e.preventDefault(); setPhaseDragging(p => ({ ...p, [dragKey]: true })); }}
+                        onDragLeave={() => setPhaseDragging(p => ({ ...p, [dragKey]: false }))}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          setPhaseDragging(p => ({ ...p, [dragKey]: false }));
+                          const files = Array.from(e.dataTransfer.files);
+                          const f = files.find(f => f.name.match(/\.(csv|xlsx|xls|pdf)$/i));
+                          if (f) setPhaseFile(selectedMeter, phase, f);
+                          else setUploadError(lang === 'th' ? 'รองรับเฉพาะ CSV, Excel, PDF' : 'Only CSV, Excel, PDF supported');
+                        }}
+                        onClick={() => document.getElementById(inputId)?.click()}
+                        className={`border-2 border-dashed rounded-xl p-5 text-center cursor-pointer transition-all min-h-[140px] flex flex-col items-center justify-center gap-2 ${
+                          dragging
+                            ? `${phaseColors.border} ${phaseColors.activeBg}`
+                            : file
+                            ? `${phaseColors.border} ${phaseColors.bg}`
+                            : 'border-gray-300 bg-gray-50 hover:' + phaseColors.border
+                        }`}
+                      >
+                        <input
+                          id={inputId}
+                          type="file"
+                          accept=".csv,.xlsx,.xls,.pdf"
+                          className="hidden"
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (f) { setPhaseFile(selectedMeter, phase, f); setUploadSuccess(null); setUploadError(null); }
+                            e.target.value = '';
+                          }}
+                        />
+                        {file ? (
+                          <>
+                            <CheckCircle className={`w-8 h-8 ${phaseColors.text}`} />
+                            <p className={`text-xs font-semibold ${phaseColors.text} break-all text-center px-1`}>{file.name}</p>
+                            <p className="text-xs text-gray-400">{(file.size / 1024).toFixed(1)} KB</p>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setPhaseFile(selectedMeter, phase, null); }}
+                              className="mt-1 text-xs text-red-500 hover:underline"
+                            >
+                              {lang === 'th' ? 'ลบ' : 'Remove'}
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <Upload className="w-8 h-8 text-gray-400" />
+                            <p className="text-sm font-medium text-gray-500">
+                              {lang === 'th' ? 'วางไฟล์หรือคลิก' : 'Drop or click'}
+                            </p>
+                            <p className="text-xs text-gray-400">CSV / Excel / PDF</p>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Generate Button — always visible */}
+              <div className="mt-6 flex items-center justify-between gap-4 pt-5 border-t border-gray-100">
+                <div className="flex items-center gap-2 text-sm text-gray-500">
+                  <Activity className="w-4 h-4" />
+                  {(['L1','L2','L3'] as const).some(p => phaseFiles[selectedMeter][p]) ? (
+                    <>
+                      {(['L1','L2','L3'] as const).filter(p => phaseFiles[selectedMeter][p]).map((p, i) => (
+                        <span key={p} className="px-2 py-0.5 rounded-full text-xs font-semibold"
+                          style={{ background: ['#dbeafe','#fef9c3','#fee2e2'][i], color: ['#1d4ed8','#92400e','#b91c1c'][i] }}>{p}</span>
+                      ))}
+                      <span className="text-gray-400">Meter {selectedMeter}</span>
+                    </>
+                  ) : (
+                    <span className="text-gray-400 text-xs">{lang === 'th' ? 'อัพโหลดไฟล์อย่างน้อย 1 เฟสก่อน Generate' : 'Upload at least 1 phase file to Generate'}</span>
+                  )}
+                </div>
+                <button
+                  onClick={() => parseAllPhasesForMeter(selectedMeter)}
+                  disabled={
+                    !(['L1','L2','L3'] as const).some(p => phaseFiles[selectedMeter][p]) ||
+                    (['L1','L2','L3'] as const).some(p => parseLoading[`${selectedMeter}-${p}`])
+                  }
+                  className="flex items-center gap-2 px-8 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl font-bold text-base shadow-lg hover:from-green-700 hover:to-emerald-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {(['L1','L2','L3'] as const).some(p => parseLoading[`${selectedMeter}-${p}`]) ? (
+                    <>
+                      <span className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                      {lang === 'th' ? 'กำลัง Generate...' : 'Generating...'}
+                    </>
+                  ) : (
+                    <>
+                      <Zap className="w-5 h-5" />
+                      Generate
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Per-phase loading badges */}
+              {(['L1','L2','L3'] as const).some(p => parseLoading[`${selectedMeter}-${p}`]) && (
+                <div className="mt-3 flex gap-3">
+                  {(['L1','L2','L3'] as const).map((phase, pi) => {
+                    const key = `${selectedMeter}-${phase}`;
+                    if (!parseLoading[key]) return null;
+                    return (
+                      <div key={phase} className="flex items-center gap-2 px-3 py-1.5 bg-purple-50 border border-purple-200 rounded-lg text-xs text-purple-700 font-medium">
+                        <span className="w-3 h-3 border-2 border-purple-300 border-t-purple-600 rounded-full animate-spin" />
+                        {lang === 'th' ? `กำลังอ่าน ${phase}...` : `Reading ${phase}...`}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
 
               {/* Alerts */}
               {uploadError && (
@@ -655,6 +846,131 @@ export default function ThailandPreInstallationAnalysis() {
                 </div>
               </div>
             )}
+
+            {/* Generated Detail Table */}
+            {showDetailTable && (['L1','L2','L3'] as const).some(p => parseResults[`${selectedMeter}-${p}`]) && (() => {
+              const r1 = parseResults[`${selectedMeter}-L1`];
+              const r2 = parseResults[`${selectedMeter}-L2`];
+              const r3 = parseResults[`${selectedMeter}-L3`];
+
+              // Build combined rows aligned by index (zip)
+              const maxLen = Math.max(r1?.records?.length ?? 0, r2?.records?.length ?? 0, r3?.records?.length ?? 0);
+              const rows = Array.from({ length: maxLen }, (_, i) => ({
+                time: r1?.records?.[i]?.record_time ?? r2?.records?.[i]?.record_time ?? r3?.records?.[i]?.record_time ?? String(i + 1),
+                L1: r1?.records?.[i]?.value ?? null,
+                L2: r2?.records?.[i]?.value ?? null,
+                L3: r3?.records?.[i]?.value ?? null,
+                voltage: r1?.records?.[i]?.voltage ?? r2?.records?.[i]?.voltage ?? r3?.records?.[i]?.voltage ?? '',
+                pf: r1?.records?.[i]?.pf ?? r2?.records?.[i]?.pf ?? r3?.records?.[i]?.pf ?? '',
+              }));
+
+              const [detailPage, setDetailPage] = React.useState(0);
+              const PAGE_SIZE = 50;
+              const totalPages = Math.ceil(rows.length / PAGE_SIZE);
+              const pageRows = rows.slice(detailPage * PAGE_SIZE, (detailPage + 1) * PAGE_SIZE);
+
+              return (
+                <div className="bg-white rounded-xl shadow-lg p-6">
+                  {/* Header */}
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                        <Table2 className="w-5 h-5 text-green-600" />
+                        {lang === 'th' ? `ข้อมูลที่ดึงได้ — มิเตอร์ ${selectedMeter}` : `Generated Data — Meter ${selectedMeter}`}
+                        <span className="text-sm font-normal text-gray-400">({rows.length.toLocaleString()} {lang === 'th' ? 'แถว' : 'rows'})</span>
+                      </h3>
+                      <p className="text-xs text-green-600 mt-0.5 font-medium">✓ {lang === 'th' ? 'บันทึกลงฐานข้อมูลแล้ว' : 'Saved to database'}</p>
+                    </div>
+                    <div className="flex gap-3">
+                      {/* Summary badges */}
+                      {([['L1', r1, 'bg-blue-100 text-blue-700'], ['L2', r2, 'bg-yellow-100 text-yellow-700'], ['L3', r3, 'bg-red-100 text-red-700']] as [string, PhaseResult|undefined, string][]).map(([ph, res]) =>
+                        res ? (
+                          <div key={ph} className="text-center">
+                            <div className={`px-3 py-1 rounded-lg text-xs font-bold ${ph === 'L1' ? 'bg-blue-100 text-blue-700' : ph === 'L2' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-700'}`}>
+                              {ph}
+                            </div>
+                            <div className="text-xs text-gray-500 mt-0.5">Peak: <span className="font-semibold text-red-600">{res.summary.peak}A</span></div>
+                            <div className="text-xs text-gray-500">Avg: <span className="font-semibold text-blue-600">{res.summary.avg}A</span></div>
+                          </div>
+                        ) : null
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Table */}
+                  <div className="overflow-x-auto rounded-lg border border-gray-200">
+                    <table className="w-full text-sm border-collapse">
+                      <thead>
+                        <tr className="bg-gray-50 border-b border-gray-200">
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 w-8">#</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">{lang === 'th' ? 'เวลา' : 'Timestamp'}</th>
+                          {r1 && <th className="px-4 py-3 text-right text-xs font-semibold text-blue-600">L1 (A)</th>}
+                          {r2 && <th className="px-4 py-3 text-right text-xs font-semibold text-yellow-600">L2 (A)</th>}
+                          {r3 && <th className="px-4 py-3 text-right text-xs font-semibold text-red-600">L3 (A)</th>}
+                          <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500">Voltage</th>
+                          <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500">PF</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pageRows.map((row, i) => {
+                          const rowIdx = detailPage * PAGE_SIZE + i;
+                          const isEven = i % 2 === 0;
+                          return (
+                            <tr key={rowIdx} className={`border-b border-gray-100 ${isEven ? 'bg-white' : 'bg-gray-50'} hover:bg-green-50 transition-colors`}>
+                              <td className="px-4 py-2 text-xs text-gray-400">{rowIdx + 1}</td>
+                              <td className="px-4 py-2 text-xs text-gray-700 font-mono">{row.time}</td>
+                              {r1 && <td className="px-4 py-2 text-right text-xs font-semibold text-blue-700">{row.L1 != null ? row.L1.toFixed(1) : '—'}</td>}
+                              {r2 && <td className="px-4 py-2 text-right text-xs font-semibold text-yellow-700">{row.L2 != null ? row.L2.toFixed(1) : '—'}</td>}
+                              {r3 && <td className="px-4 py-2 text-right text-xs font-semibold text-red-700">{row.L3 != null ? row.L3.toFixed(1) : '—'}</td>}
+                              <td className="px-4 py-2 text-right text-xs text-gray-500">{row.voltage || '—'}</td>
+                              <td className="px-4 py-2 text-right text-xs text-gray-500">{row.pf || '—'}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Pagination */}
+                  {totalPages > 1 && (
+                    <div className="flex items-center justify-between mt-4">
+                      <p className="text-xs text-gray-500">
+                        {lang === 'th' ? `หน้า ${detailPage + 1} จาก ${totalPages} (แสดง ${PAGE_SIZE} แถวต่อหน้า)` : `Page ${detailPage + 1} of ${totalPages} (${PAGE_SIZE} rows/page)`}
+                      </p>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setDetailPage(p => Math.max(0, p - 1))}
+                          disabled={detailPage === 0}
+                          className="px-3 py-1.5 text-xs bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-40 transition"
+                        >
+                          {lang === 'th' ? '← ก่อนหน้า' : '← Prev'}
+                        </button>
+                        {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                          const pg = detailPage < 3 ? i : detailPage - 2 + i;
+                          if (pg >= totalPages) return null;
+                          return (
+                            <button
+                              key={pg}
+                              onClick={() => setDetailPage(pg)}
+                              className={`px-3 py-1.5 text-xs rounded-lg transition ${pg === detailPage ? 'bg-green-600 text-white' : 'bg-gray-100 hover:bg-gray-200'}`}
+                            >
+                              {pg + 1}
+                            </button>
+                          );
+                        })}
+                        <button
+                          onClick={() => setDetailPage(p => Math.min(totalPages - 1, p + 1))}
+                          disabled={detailPage === totalPages - 1}
+                          className="px-3 py-1.5 text-xs bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-40 transition"
+                        >
+                          {lang === 'th' ? 'ถัดไป →' : 'Next →'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* CSV Analysis Result */}
             {uploadedCSVData.length > 0 && (() => {
