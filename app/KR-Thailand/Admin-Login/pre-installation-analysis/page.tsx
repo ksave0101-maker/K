@@ -111,21 +111,23 @@ export default function ThailandPreInstallationAnalysis() {
       const json = await res.json();
       const list: UploadCusRow[] = json.customers || [];
       setUploadCusResults(list);
-      setUploadCusOpen(list.length > 0);
-    } catch { setUploadCusResults([]); } finally { setUploadCusLoading(false); }
+      setUploadCusOpen(true);
+    } catch { setUploadCusResults([]); setUploadCusOpen(true); } finally { setUploadCusLoading(false); }
   };
 
   const searchUploadCustomers = (q: string) => {
     setUploadCusQuery(q);
-    setUploadCustomerName(q);
+    setUploadCusSelected(null);
     setUploadCusError(false);
+    if (q.length === 0) { setUploadCusOpen(false); setUploadCusResults([]); return; }
+    setUploadCusOpen(true);
     if (uploadCusDebounceRef.current) clearTimeout(uploadCusDebounceRef.current);
     uploadCusDebounceRef.current = setTimeout(() => fetchUploadCustomers(q), 300);
   };
 
   const openUploadCusDropdown = () => {
-    if (uploadCusResults.length > 0) { setUploadCusOpen(true); return; }
-    fetchUploadCustomers(uploadCusQuery);
+    setUploadCusOpen(true);
+    if (uploadCusResults.length === 0) fetchUploadCustomers(uploadCusQuery);
   };
 
   const setPhaseFile = (meter: number, phase: 'L1' | 'L2' | 'L3', file: File | null) => {
