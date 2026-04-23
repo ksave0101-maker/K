@@ -12,13 +12,7 @@ export async function GET(request: NextRequest) {
     // Single quotation by ID
     if (id) {
       const [rows]: any = await pool.query(
-        `SELECT q.*,
-                p.\`Pre-installNo\` as imported_pre_install_no,
-                pc.power_calcuNo as imported_power_calc_no
-         FROM quotations q
-         LEFT JOIN pre_installation_forms p ON q.pre_install_formID = p.formID
-         LEFT JOIN power_calculations pc ON q.power_calc_id = pc.calcID
-         WHERE q.quoteID = ?`, [id]
+        `SELECT * FROM quotations WHERE quoteID = ?`, [id]
       )
       return NextResponse.json({ success: true, quotation: rows?.[0] || null, rows })
     }
@@ -26,13 +20,7 @@ export async function GET(request: NextRequest) {
     // Single quotation by quoteNo
     if (quoteNo) {
       const [rows]: any = await pool.query(
-        `SELECT q.*,
-                p.\`Pre-installNo\` as imported_pre_install_no,
-                pc.power_calcuNo as imported_power_calc_no
-         FROM quotations q
-         LEFT JOIN pre_installation_forms p ON q.pre_install_formID = p.formID
-         LEFT JOIN power_calculations pc ON q.power_calc_id = pc.calcID
-         WHERE q.quoteNo = ?`, [quoteNo]
+        `SELECT * FROM quotations WHERE quoteNo = ?`, [quoteNo]
       )
       return NextResponse.json({ success: true, quotation: rows?.[0] || null, rows })
     }
@@ -64,20 +52,17 @@ export async function POST(request: NextRequest) {
     const {
       quoteNo,
       quoteDate,
+      cusID,
       customerName,
       customerEmail,
       customerPhone,
-      customerAddress,
-      customerCompany,
-      customerTaxId,
-      preInstallFormID,
-      powerCalcID,
       items,
       subtotal,
-      discountPercent,
       discountAmount,
       vatAmount,
-      total
+      total,
+      notes,
+      createdBy,
     } = body
 
     if (!quoteNo || !customerName) {
@@ -90,29 +75,23 @@ export async function POST(request: NextRequest) {
     // Insert quotation
     const [result]: any = await pool.query(
       `INSERT INTO quotations (
-        quoteNo, quoteDate, customer_name, customer_email, customer_phone,
-        customer_address, customer_company, customer_tax_id,
-        pre_install_formID, power_calc_id,
-        subtotal, discount_percent, discount, vat, total,
-        items, status, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NOW())`,
+        quoteNo, quoteDate, cusID, customer_name, customer_email, customer_phone,
+        subtotal, discount, vat, total, items, notes, status, created_by, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, NOW())`,
       [
         quoteNo,
-        quoteDate,
+        quoteDate || null,
+        cusID || null,
         customerName,
-        customerEmail,
-        customerPhone,
-        customerAddress,
-        customerCompany,
-        customerTaxId,
-        preInstallFormID || null,
-        powerCalcID || null,
-        subtotal,
-        discountPercent,
-        discountAmount,
-        vatAmount,
-        total,
-        JSON.stringify(items)
+        customerEmail || null,
+        customerPhone || null,
+        subtotal || 0,
+        discountAmount || 0,
+        vatAmount || 0,
+        total || 0,
+        JSON.stringify(items || []),
+        notes || null,
+        createdBy || null,
       ]
     )
 
