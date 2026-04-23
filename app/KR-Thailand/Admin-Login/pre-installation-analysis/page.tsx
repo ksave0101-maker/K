@@ -753,9 +753,9 @@ export default function ThailandPreInstallationAnalysis() {
                                 {(c.fullname || c.company || '?')[0].toUpperCase()}
                               </div>
                               <div className="flex-1 min-w-0">
-                                <p className="font-semibold text-gray-800 truncate">{c.fullname || c.company}</p>
+                                <p className="font-semibold text-gray-800 truncate">{c.fullname}</p>
                                 <p className="text-xs text-gray-400 truncate">
-                                  ID: {c.cusID}{c.company && c.fullname ? ` · ${c.company}` : ''}{buildAddress(c) ? ` · ${buildAddress(c)}` : ''}
+                                  ID: {c.cusID}{c.company ? ` · ${c.company}` : ''}{buildAddress(c) ? ` · ${buildAddress(c)}` : ''}
                                 </p>
                               </div>
                             </button>

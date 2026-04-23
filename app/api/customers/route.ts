@@ -7,8 +7,8 @@ export const runtime = 'nodejs'
 function mapRow(r: any) {
   return {
     cusID: r.customerID,
-    fullname: r.contactPersonName || r.customerCompanyName || '',
-    company: r.customerCompanyName || '',
+    fullname: r.customerCompanyName || '',
+    company: r.contactPersonName || '',
     phone: r.phone || '',
     email: r.email || '',
     address: r.locationProvince || '',
