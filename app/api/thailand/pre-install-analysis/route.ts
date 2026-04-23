@@ -3,7 +3,46 @@ import { pool } from '@/lib/mysql'
 
 export const runtime = 'nodejs'
 
+async function initTable() {
+  const conn = await pool.getConnection()
+  try {
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS th_pre_install_analysis (
+        id VARCHAR(50) NOT NULL PRIMARY KEY,
+        branch VARCHAR(100) DEFAULT '',
+        location VARCHAR(500) DEFAULT '',
+        equipment VARCHAR(255) DEFAULT '',
+        datetime DATETIME DEFAULT NULL,
+        measurementPeriod VARCHAR(100) DEFAULT '',
+        technician VARCHAR(255) DEFAULT '',
+        voltage VARCHAR(50) DEFAULT '380',
+        frequency FLOAT DEFAULT 50,
+        powerFactor FLOAT DEFAULT 0.85,
+        thd FLOAT DEFAULT 0,
+        current_L1 FLOAT DEFAULT 0,
+        current_L2 FLOAT DEFAULT 0,
+        current_L3 FLOAT DEFAULT 0,
+        current_N FLOAT DEFAULT 0,
+        balance VARCHAR(20) DEFAULT 'Good',
+        result VARCHAR(50) DEFAULT 'Recommended',
+        recommendation TEXT,
+        notes TEXT,
+        recommendedProduct VARCHAR(255) DEFAULT NULL,
+        engineerName VARCHAR(255) DEFAULT '',
+        engineerLicense VARCHAR(100) DEFAULT '',
+        approvalStatus VARCHAR(20) DEFAULT 'Pending',
+        approvalDate DATETIME DEFAULT NULL,
+        approverName VARCHAR(255) DEFAULT '',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `)
+  } finally {
+    conn.release()
+  }
+}
+
 export async function GET() {
+  await initTable()
   const conn = await pool.getConnection()
   try {
     const [rows]: any = await conn.query(

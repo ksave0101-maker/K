@@ -3,8 +3,45 @@ import { pool } from '@/lib/mysql'
 
 export const runtime = 'nodejs'
 
+async function initTables() {
+  const conn = await pool.getConnection()
+  try {
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS th_pre_install_batches (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        batchId VARCHAR(100) NOT NULL UNIQUE,
+        customerName VARCHAR(255) DEFAULT '',
+        location VARCHAR(500) DEFAULT '',
+        createdAt DATETIME DEFAULT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        KEY idx_batchId (batchId)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `)
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS th_pre_install_batch_records (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        batchId VARCHAR(100) NOT NULL,
+        record_order INT DEFAULT 0,
+        date VARCHAR(50) DEFAULT '',
+        time VARCHAR(20) DEFAULT '',
+        L1 VARCHAR(50) DEFAULT '',
+        L2 VARCHAR(50) DEFAULT '',
+        L3 VARCHAR(50) DEFAULT '',
+        N VARCHAR(50) DEFAULT '',
+        voltage VARCHAR(50) DEFAULT '380',
+        pf VARCHAR(50) DEFAULT '0.85',
+        note TEXT,
+        KEY idx_batchId (batchId)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `)
+  } finally {
+    conn.release()
+  }
+}
+
 // GET all batches with their records
 export async function GET() {
+  await initTables()
   const conn = await pool.getConnection()
   try {
     const [batches]: any = await conn.query(
@@ -41,6 +78,7 @@ export async function GET() {
 
 // POST - save all batches (full replace per batchId)
 export async function POST(req: NextRequest) {
+  await initTables()
   const body = await req.json()
   const batches: any[] = body.batches || []
   const conn = await pool.getConnection()

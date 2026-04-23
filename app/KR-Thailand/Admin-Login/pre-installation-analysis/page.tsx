@@ -86,19 +86,22 @@ export default function ThailandPreInstallationAnalysis() {
   const [parseError, setParseError] = useState<{ [key: string]: string }>({});
   const [activeBatchIdUpload, setActiveBatchIdUpload] = useState<string>(`batch_${Date.now()}`);
   const [showDetailTable, setShowDetailTable] = useState(false);
+  const [savedToDB, setSavedToDB] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   const setPhaseFile = (meter: number, phase: 'L1' | 'L2' | 'L3', file: File | null) => {
     setPhaseFiles(prev => ({ ...prev, [meter]: { ...prev[meter], [phase]: file } }));
-    // clear previous result for this slot
     const key = `${meter}-${phase}`;
     setParseResults(prev => { const n = { ...prev }; delete n[key]; return n; });
     setParseError(prev => { const n = { ...prev }; delete n[key]; return n; });
+    setSavedToDB(false);
+    setShowDetailTable(false);
     if (file) {
       setUploadedFiles(prev => [...prev.filter(f => f.name !== file.name), file]);
     }
   };
 
-  const parsePhaseFile = async (meter: number, phase: 'L1' | 'L2' | 'L3') => {
+  const parsePhaseFile = async (meter: number, phase: 'L1' | 'L2' | 'L3', mode: 'preview' | 'save' = 'preview') => {
     const file = phaseFiles[meter][phase];
     if (!file) return;
     const key = `${meter}-${phase}`;
@@ -110,6 +113,7 @@ export default function ThailandPreInstallationAnalysis() {
       fd.append('meter', String(meter));
       fd.append('phase', phase);
       fd.append('batchId', activeBatchIdUpload);
+      fd.append('action', mode);
       const res = await fetch('/api/thailand/pre-install-parse-file', { method: 'POST', body: fd });
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || 'Parse failed');
@@ -125,11 +129,27 @@ export default function ThailandPreInstallationAnalysis() {
     const newBatchId = `batch_${Date.now()}`;
     setActiveBatchIdUpload(newBatchId);
     setShowDetailTable(false);
+    setSavedToDB(false);
+    setUploadSuccess(null);
     for (const phase of ['L1', 'L2', 'L3'] as const) {
-      if (phaseFiles[meter][phase]) await parsePhaseFile(meter, phase);
+      if (phaseFiles[meter][phase]) await parsePhaseFile(meter, phase, 'preview');
     }
     setShowDetailTable(true);
-    setUploadSuccess(lang === 'th' ? 'Generate เสร็จแล้ว บันทึกลงฐานข้อมูลเรียบร้อย' : 'Generated and saved to database successfully');
+    setUploadSuccess(lang === 'th' ? 'Preview พร้อมแล้ว — กรุณาตรวจสอบข้อมูล แล้วกดปุ่ม "บันทึกลงฐานข้อมูล"' : 'Preview ready — please review the data, then click "Save to Database"');
+  };
+
+  const saveAllPhasesToDB = async (meter: number) => {
+    setIsSaving(true);
+    setUploadSuccess(null);
+    try {
+      for (const phase of ['L1', 'L2', 'L3'] as const) {
+        if (phaseFiles[meter][phase]) await parsePhaseFile(meter, phase, 'save');
+      }
+      setSavedToDB(true);
+      setUploadSuccess(lang === 'th' ? 'บันทึกลงฐานข้อมูลเรียบร้อยแล้ว' : 'Saved to database successfully');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   // ---- Customer Current Record Batches ----
@@ -158,6 +178,8 @@ export default function ThailandPreInstallationAnalysis() {
   const [newCustomerName, setNewCustomerName] = useState('');
   const [newCustomerLocation, setNewCustomerLocation] = useState('');
   const [showNewCustomerForm, setShowNewCustomerForm] = useState(false);
+  const [batchSaveStatus, setBatchSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const batchSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Customer DB search ──
   type CusResult = { cusID: number; fullname: string; company: string; address: string; phone: string; email: string };
@@ -194,11 +216,22 @@ export default function ThailandPreInstallationAnalysis() {
 
   const saveBatches = (updated: CurrentBatch[]) => {
     setBatches(updated);
-    fetch('/api/thailand/pre-install-batches', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ batches: updated }),
-    }).catch(() => {});
+    setBatchSaveStatus('saving');
+    if (batchSaveTimerRef.current) clearTimeout(batchSaveTimerRef.current);
+    batchSaveTimerRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch('/api/thailand/pre-install-batches', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ batches: updated }),
+        });
+        if (!res.ok) throw new Error('save failed');
+        setBatchSaveStatus('saved');
+        setTimeout(() => setBatchSaveStatus('idle'), 2500);
+      } catch {
+        setBatchSaveStatus('error');
+      }
+    }, 500);
   };
 
   const activeBatch = batches.find(b => b.batchId === activeBatchId) ?? null;
@@ -879,7 +912,30 @@ export default function ThailandPreInstallationAnalysis() {
                         {lang === 'th' ? `ข้อมูลที่ดึงได้ — มิเตอร์ ${selectedMeter}` : `Generated Data — Meter ${selectedMeter}`}
                         <span className="text-sm font-normal text-gray-400">({rows.length.toLocaleString()} {lang === 'th' ? 'แถว' : 'rows'})</span>
                       </h3>
-                      <p className="text-xs text-green-600 mt-0.5 font-medium">✓ {lang === 'th' ? 'บันทึกลงฐานข้อมูลแล้ว' : 'Saved to database'}</p>
+                      {savedToDB ? (
+                        <p className="text-xs text-green-600 mt-0.5 font-medium flex items-center gap-1">
+                          <CheckCircle className="w-3.5 h-3.5" />
+                          {lang === 'th' ? 'บันทึกลงฐานข้อมูลแล้ว' : 'Saved to database'}
+                        </p>
+                      ) : (
+                        <button
+                          onClick={() => saveAllPhasesToDB(selectedMeter)}
+                          disabled={isSaving}
+                          className="mt-1.5 flex items-center gap-1.5 px-5 py-2 bg-green-600 text-white text-sm font-bold rounded-lg hover:bg-green-700 transition shadow disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {isSaving ? (
+                            <>
+                              <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                              {lang === 'th' ? 'กำลังบันทึก...' : 'Saving...'}
+                            </>
+                          ) : (
+                            <>
+                              <Save className="w-4 h-4" />
+                              {lang === 'th' ? 'บันทึกลงฐานข้อมูล' : 'Save to Database'}
+                            </>
+                          )}
+                        </button>
+                      )}
                     </div>
                     <div className="flex gap-3">
                       {/* Summary badges */}
@@ -1324,11 +1380,25 @@ export default function ThailandPreInstallationAnalysis() {
                           })()}
                         </table>
                       </div>
-                      <p className="text-xs text-gray-400 mt-2">
-                        {lang === 'th'
-                          ? `${activeBatch.records.length} แถว · บันทึกอัตโนมัติ · กด "โหลดเข้าฟอร์มวิเคราะห์" เพื่อนำค่าเฉลี่ยไปใช้`
-                          : `${activeBatch.records.length} rows · Auto-saved · Click "Load to Analysis Form" to use averaged values`}
-                      </p>
+                      <div className="flex items-center gap-3 mt-2">
+                        <p className="text-xs text-gray-400">
+                          {activeBatch.records.length} {lang === 'th' ? 'แถว' : 'rows'} ·{' '}
+                          {lang === 'th' ? 'กด "โหลดเข้าฟอร์มวิเคราะห์" เพื่อนำค่าเฉลี่ยไปใช้' : 'Click "Load to Analysis Form" to use averaged values'}
+                        </p>
+                        <span className={`text-xs font-medium flex items-center gap-1 ${
+                          batchSaveStatus === 'saving' ? 'text-yellow-500' :
+                          batchSaveStatus === 'saved' ? 'text-green-600' :
+                          batchSaveStatus === 'error' ? 'text-red-500' : 'text-gray-400'
+                        }`}>
+                          {batchSaveStatus === 'saving' && (
+                            <><span className="w-3 h-3 border-2 border-yellow-300 border-t-yellow-500 rounded-full animate-spin inline-block" />
+                            {lang === 'th' ? 'กำลังบันทึก...' : 'Saving...'}</>
+                          )}
+                          {batchSaveStatus === 'saved' && <>✓ {lang === 'th' ? 'บันทึกลงฐานข้อมูลแล้ว' : 'Saved to DB'}</>}
+                          {batchSaveStatus === 'error' && <>✗ {lang === 'th' ? 'บันทึกไม่สำเร็จ' : 'Save failed'}</>}
+                          {batchSaveStatus === 'idle' && <>{lang === 'th' ? 'บันทึกอัตโนมัติ' : 'Auto-save'}</>}
+                        </span>
+                      </div>
                     </div>
                   )}
                 </>

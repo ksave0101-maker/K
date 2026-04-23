@@ -4,6 +4,39 @@ import * as XLSX from 'xlsx'
 
 export const runtime = 'nodejs'
 
+async function initTables() {
+  const conn = await (await import('@/lib/mysql')).pool.getConnection()
+  try {
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS th_pre_install_batches (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        batchId VARCHAR(100) NOT NULL UNIQUE,
+        customerName VARCHAR(255) DEFAULT '',
+        location VARCHAR(500) DEFAULT '',
+        createdAt DATETIME DEFAULT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        KEY idx_batchId (batchId)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `)
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS th_pre_install_phase_records (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        batchId VARCHAR(100) NOT NULL,
+        meter INT DEFAULT 1,
+        phase VARCHAR(10) NOT NULL,
+        record_time VARCHAR(100) DEFAULT '',
+        value FLOAT DEFAULT 0,
+        voltage VARCHAR(50) DEFAULT '',
+        pf VARCHAR(50) DEFAULT '',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        KEY idx_batchId_meter_phase (batchId, meter, phase)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `)
+  } finally {
+    conn.release()
+  }
+}
+
 interface ParsedRecord {
   record_time: string
   value: number
@@ -164,6 +197,7 @@ ${rawText.slice(0, 8000)}
 
 // ── POST handler ───────────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
+  await initTables()
   try {
     const formData = await req.formData()
     const file = formData.get('file') as File | null
@@ -172,6 +206,7 @@ export async function POST(req: NextRequest) {
     const batchId = String(formData.get('batchId') || `batch_${Date.now()}`)
     const customerName = String(formData.get('customerName') || '')
     const location = String(formData.get('location') || '')
+    const action = String(formData.get('action') || 'save') // 'preview' = parse only, 'save' = parse + save to DB
 
     if (!file) return NextResponse.json({ error: 'No file' }, { status: 400 })
 
@@ -194,31 +229,31 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'ไม่พบข้อมูลในไฟล์ / No data found in file' }, { status: 422 })
     }
 
-    // Save batch header if not exists
-    const conn = await pool.getConnection()
-    try {
-      await conn.execute(
-        `INSERT IGNORE INTO th_pre_install_batches (batchId, customerName, location, createdAt)
-         VALUES (?, ?, ?, NOW())`,
-        [batchId, customerName, location]
-      )
-
-      // Delete old records for this meter+phase in this batch
-      await conn.execute(
-        `DELETE FROM th_pre_install_phase_records WHERE batchId = ? AND meter = ? AND phase = ?`,
-        [batchId, meter, phase]
-      )
-
-      // Insert new records
-      for (const r of records) {
+    // Save to DB only when action is not 'preview'
+    if (action !== 'preview') {
+      const conn = await pool.getConnection()
+      try {
         await conn.execute(
-          `INSERT INTO th_pre_install_phase_records (batchId, meter, phase, record_time, value, voltage, pf)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
-          [batchId, meter, phase, r.record_time, r.value, r.voltage, r.pf]
+          `INSERT IGNORE INTO th_pre_install_batches (batchId, customerName, location, createdAt)
+           VALUES (?, ?, ?, NOW())`,
+          [batchId, customerName, location]
         )
+
+        await conn.execute(
+          `DELETE FROM th_pre_install_phase_records WHERE batchId = ? AND meter = ? AND phase = ?`,
+          [batchId, meter, phase]
+        )
+
+        for (const r of records) {
+          await conn.execute(
+            `INSERT INTO th_pre_install_phase_records (batchId, meter, phase, record_time, value, voltage, pf)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [batchId, meter, phase, r.record_time, r.value, r.voltage, r.pf]
+          )
+        }
+      } finally {
+        conn.release()
       }
-    } finally {
-      conn.release()
     }
 
     // Compute summary
