@@ -20,11 +20,13 @@ function mapRow(r: any) {
 }
 
 const SELECT = `
-  SELECT customerID, customerCompanyName, contactPersonName, contactPosition,
+  SELECT MIN(customerID) AS customerID, customerCompanyName, contactPersonName, contactPosition,
          phone, email, locationProvince, industryType, salesOwner,
-         currentStage, notes, created_at
+         currentStage, notes, MIN(created_at) AS created_at
   FROM customers_detailed
 `
+
+const GROUP_BY = `GROUP BY customerCompanyName`
 
 // GET - ค้นหาลูกค้า
 export async function GET(req: NextRequest) {
@@ -36,7 +38,7 @@ export async function GET(req: NextRequest) {
     const conn = await pool.getConnection()
     try {
       if (id) {
-        const [rows]: any = await conn.query(`${SELECT} WHERE customerID = ?`, [id])
+        const [rows]: any = await conn.query(`${SELECT} WHERE customerID = ? ${GROUP_BY}`, [id])
         if (rows.length === 0) {
           return NextResponse.json({ success: false, error: 'not_found' }, { status: 404 })
         }
@@ -45,7 +47,7 @@ export async function GET(req: NextRequest) {
 
       if (q.length < 1) {
         const [rows]: any = await conn.query(
-          `${SELECT} ORDER BY customerCompanyName ASC LIMIT 100`
+          `${SELECT} ${GROUP_BY} ORDER BY customerCompanyName ASC LIMIT 100`
         )
         return NextResponse.json({ success: true, customers: rows.map(mapRow) })
       }
@@ -55,6 +57,7 @@ export async function GET(req: NextRequest) {
         `${SELECT}
          WHERE customerCompanyName LIKE ? OR contactPersonName LIKE ?
             OR phone LIKE ? OR email LIKE ? OR locationProvince LIKE ?
+         ${GROUP_BY}
          ORDER BY customerCompanyName ASC
          LIMIT 20`,
         [s, s, s, s, s]
