@@ -981,7 +981,7 @@ export default function PowerCalculatorPage() {
                     <tr>
                       <td style={{ border: '1px solid #ddd', padding: '8px 12px', background: '#fffde7' }}>{L('Average monthly usage', 'ค่าเฉลี่ยการใช้รายเดือน')}</td>
                       <td style={{ border: '1px solid #ddd', padding: '8px 12px', textAlign: 'right' }}>
-                        <input type="number" className={styles.formInput} value={avgMonthlyUsage || ''} onChange={e => setAvgMonthlyUsage(Number(e.target.value || 0))} style={{ width: 120, textAlign: 'right' }} /> <span style={{ color: '#d00', fontWeight: 600 }}>KVA</span>
+                        <input type="number" className={styles.formInput} value={avgMonthlyUsage || ''} onChange={e => setAvgMonthlyUsage(Number(e.target.value || 0))} style={{ width: 120, textAlign: 'right' }} /> <span style={{ color: '#d00', fontWeight: 600 }}>kWh</span>
                       </td>
                       <td style={{ border: '1px solid #ddd', padding: '8px 12px' }}></td>
                     </tr>
