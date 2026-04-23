@@ -42,7 +42,7 @@ async function initTable() {
 }
 
 export async function GET() {
-  await initTable()
+  try { await initTable() } catch { /* table may already exist */ }
   const conn = await pool.getConnection()
   try {
     const [rows]: any = await conn.query(

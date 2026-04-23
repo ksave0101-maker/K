@@ -41,7 +41,7 @@ async function initTables() {
 
 // GET all batches with their records
 export async function GET() {
-  await initTables()
+  try { await initTables() } catch { /* tables may already exist */ }
   const conn = await pool.getConnection()
   try {
     const [batches]: any = await conn.query(
@@ -78,7 +78,7 @@ export async function GET() {
 
 // POST - save all batches (full replace per batchId)
 export async function POST(req: NextRequest) {
-  await initTables()
+  try { await initTables() } catch { /* tables may already exist */ }
   const body = await req.json()
   const batches: any[] = body.batches || []
   const conn = await pool.getConnection()

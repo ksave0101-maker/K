@@ -5,7 +5,7 @@ import * as XLSX from 'xlsx'
 export const runtime = 'nodejs'
 
 async function initTables() {
-  const conn = await (await import('@/lib/mysql')).pool.getConnection()
+  const conn = await pool.getConnection()
   try {
     await conn.execute(`
       CREATE TABLE IF NOT EXISTS th_pre_install_batches (
@@ -197,7 +197,7 @@ ${rawText.slice(0, 8000)}
 
 // ── POST handler ───────────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
-  await initTables()
+  try { await initTables() } catch { /* tables may already exist */ }
   try {
     const formData = await req.formData()
     const file = formData.get('file') as File | null
