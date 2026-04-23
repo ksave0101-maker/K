@@ -64,6 +64,7 @@ export default function ThailandPreInstallationAnalysis() {
   const { locale } = useLocale();
   const lang = locale === 'th' ? 'th' : 'en';
   const [view, setView] = useState<'form' | 'upload' | 'list'>('form');
+  const batchTableRef = useRef<HTMLDivElement>(null);
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [uploadedCSVData, setUploadedCSVData] = useState<any[]>([]);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -142,9 +143,9 @@ export default function ThailandPreInstallationAnalysis() {
     }
   };
 
-  const parsePhaseFile = async (meter: number, phase: 'L1' | 'L2' | 'L3', mode: 'preview' | 'save' = 'preview') => {
+  const parsePhaseFile = async (meter: number, phase: 'L1' | 'L2' | 'L3', mode: 'preview' | 'save' = 'preview'): Promise<PhaseResult | null> => {
     const file = phaseFiles[meter][phase];
-    if (!file) return;
+    if (!file) return null;
     const key = `${meter}-${phase}`;
     setParseLoading(prev => ({ ...prev, [key]: true }));
     setParseError(prev => { const n = { ...prev }; delete n[key]; return n; });
@@ -162,8 +163,10 @@ export default function ThailandPreInstallationAnalysis() {
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || 'Parse failed');
       setParseResults(prev => ({ ...prev, [key]: data }));
+      return data as PhaseResult;
     } catch (e: any) {
       setParseError(prev => ({ ...prev, [key]: e.message }));
+      return null;
     } finally {
       setParseLoading(prev => ({ ...prev, [key]: false }));
     }
@@ -175,10 +178,53 @@ export default function ThailandPreInstallationAnalysis() {
     setShowDetailTable(false);
     setSavedToDB(false);
     setUploadSuccess(null);
+
+    const results: { L1: PhaseResult | null; L2: PhaseResult | null; L3: PhaseResult | null } = { L1: null, L2: null, L3: null };
     for (const phase of ['L1', 'L2', 'L3'] as const) {
-      if (phaseFiles[meter][phase]) await parsePhaseFile(meter, phase, 'preview');
+      if (phaseFiles[meter][phase]) results[phase] = await parsePhaseFile(meter, phase, 'preview');
     }
     setShowDetailTable(true);
+
+    // Merge CSV records into Current Record Database table rows
+    const l1 = results.L1?.records || [];
+    const l2 = results.L2?.records || [];
+    const l3 = results.L3?.records || [];
+    const maxLen = Math.min(Math.max(l1.length, l2.length, l3.length), 500);
+
+    if (maxLen > 0) {
+      const csvRows: CurrentRecord[] = Array.from({ length: maxLen }, (_, i) => {
+        const ref = l1[i] || l2[i] || l3[i];
+        const rt = ref?.record_time || '';
+        let date = '', time = '';
+        const m = rt.match(/(\d{4}[-/]\d{2}[-/]\d{2})[T\s](\d{2}:\d{2})/);
+        if (m) { date = m[1].replace(/\//g, '-'); time = m[2]; }
+        else { date = rt; }
+        return {
+          id: i + 1,
+          date,
+          time,
+          L1: l1[i] ? String(l1[i].value) : '',
+          L2: l2[i] ? String(l2[i].value) : '',
+          L3: l3[i] ? String(l3[i].value) : '',
+          N: '',
+          voltage: ref?.voltage || '380',
+          pf: ref?.pf || '0.85',
+          note: '',
+        };
+      });
+
+      const newBatch: CurrentBatch = {
+        batchId: newBatchId,
+        customerName: uploadCustomerName || `Meter ${meter}`,
+        location: uploadCustomerLocation || '',
+        createdAt: getCurrentDateTime(),
+        records: csvRows,
+      };
+      setBatches(prev => [newBatch, ...prev.filter(b => b.batchId !== newBatchId)]);
+      setActiveBatchId(newBatchId);
+      setTimeout(() => batchTableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 200);
+    }
+
     setUploadSuccess(lang === 'th' ? 'Preview พร้อมแล้ว — กรุณาตรวจสอบข้อมูล แล้วกดปุ่ม "บันทึกลงฐานข้อมูล"' : 'Preview ready — please review the data, then click "Save to Database"');
   };
 
@@ -1284,7 +1330,7 @@ export default function ThailandPreInstallationAnalysis() {
             })()}
 
             {/* Customer Batch Database */}
-            <div className="bg-white rounded-xl shadow-lg p-6">
+            <div ref={batchTableRef} className="bg-white rounded-xl shadow-lg p-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-bold text-gray-800 flex items-center">
                   <Activity className="w-5 h-5 mr-2 text-indigo-600" />
