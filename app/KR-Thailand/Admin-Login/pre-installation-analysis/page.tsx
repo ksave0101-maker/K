@@ -92,8 +92,10 @@ export default function ThailandPreInstallationAnalysis() {
   // Upload section — customer selection (required before saving to DB)
   const [uploadCustomerName, setUploadCustomerName] = useState('');
   const [uploadCustomerLocation, setUploadCustomerLocation] = useState('');
+  const [uploadCusID, setUploadCusID] = useState<number | null>(null);
+  const [uploadCusSelected, setUploadCusSelected] = useState<{ cusID: number; fullname: string; company: string; address: string; phone?: string } | null>(null);
   const [uploadCusQuery, setUploadCusQuery] = useState('');
-  const [uploadCusResults, setUploadCusResults] = useState<{ cusID: number; fullname: string; company: string; address: string }[]>([]);
+  const [uploadCusResults, setUploadCusResults] = useState<{ cusID: number; fullname: string; company: string; address: string; phone: string }[]>([]);
   const [uploadCusOpen, setUploadCusOpen] = useState(false);
   const [uploadCusLoading, setUploadCusLoading] = useState(false);
   const [uploadCusError, setUploadCusError] = useState(false);
@@ -143,6 +145,7 @@ export default function ThailandPreInstallationAnalysis() {
       fd.append('action', mode);
       fd.append('customerName', uploadCustomerName);
       fd.append('location', uploadCustomerLocation);
+      fd.append('cusID', uploadCusID ? String(uploadCusID) : '');
       const res = await fetch('/api/thailand/pre-install-parse-file', { method: 'POST', body: fd });
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || 'Parse failed');
@@ -168,9 +171,9 @@ export default function ThailandPreInstallationAnalysis() {
   };
 
   const saveAllPhasesToDB = async (meter: number) => {
-    if (!uploadCustomerName.trim()) {
+    if (!uploadCusSelected) {
       setUploadCusError(true);
-      setUploadError(lang === 'th' ? 'กรุณาเลือกหรือพิมพ์ชื่อลูกค้าก่อนบันทึก' : 'Please select a customer name before saving');
+      setUploadError(lang === 'th' ? 'กรุณาเลือกลูกค้าจากฐานข้อมูลก่อนบันทึก' : 'Please select a customer from the database before saving');
       return;
     }
     setIsSaving(true);
@@ -657,68 +660,109 @@ export default function ThailandPreInstallationAnalysis() {
               </p>
 
               {/* Customer Name — required before saving */}
-              <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl">
-                <p className="text-sm font-semibold text-amber-800 mb-3 flex items-center gap-2">
-                  <User className="w-4 h-4" />
-                  {lang === 'th' ? 'ชื่อลูกค้า / สถานที่ติดตั้ง (จำเป็นก่อนบันทึก)' : 'Customer Name / Site (required before saving)'}
-                  <span className="text-red-500">*</span>
+              <div className={`mb-6 p-4 rounded-xl border-2 transition-colors ${
+                uploadCusError && !uploadCusSelected ? 'bg-red-50 border-red-300' :
+                uploadCusSelected ? 'bg-green-50 border-green-300' : 'bg-blue-50 border-blue-200'
+              }`}>
+                <p className="text-sm font-bold mb-3 flex items-center gap-2 text-gray-700">
+                  <User className="w-4 h-4 text-blue-600" />
+                  {lang === 'th' ? 'ค้นหาลูกค้าจากฐานข้อมูล' : 'Search Customer from Database'}
+                  <span className="text-red-500 font-bold">* {lang === 'th' ? '(จำเป็น)' : '(required)'}</span>
                 </p>
-                <div className="flex gap-3 flex-wrap">
-                  <div className="relative flex-1 min-w-[220px]">
-                    <input
-                      type="text"
-                      value={uploadCusQuery}
-                      onChange={e => searchUploadCustomers(e.target.value)}
-                      onBlur={() => setTimeout(() => setUploadCusOpen(false), 150)}
-                      placeholder={lang === 'th' ? 'พิมพ์ชื่อลูกค้า...' : 'Type customer name...'}
-                      className={`w-full px-3 py-2 text-sm border-2 rounded-lg focus:outline-none focus:ring-2 ${
-                        uploadCusError && !uploadCustomerName.trim()
-                          ? 'border-red-400 focus:ring-red-300 bg-red-50'
-                          : uploadCustomerName.trim()
-                          ? 'border-green-400 focus:ring-green-300 bg-green-50'
-                          : 'border-gray-300 focus:ring-amber-300'
-                      }`}
-                    />
-                    {uploadCusLoading && (
-                      <span className="absolute right-2 top-2.5 w-4 h-4 border-2 border-gray-300 border-t-amber-500 rounded-full animate-spin" />
-                    )}
-                    {uploadCustomerName.trim() && !uploadCusLoading && (
-                      <CheckCircle className="absolute right-2 top-2.5 w-4 h-4 text-green-500" />
-                    )}
-                    {uploadCusOpen && uploadCusResults.length > 0 && (
-                      <div className="absolute z-50 top-full left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg mt-1 max-h-48 overflow-auto">
-                        {uploadCusResults.map(c => (
-                          <button
-                            key={c.cusID}
-                            onMouseDown={() => {
-                              const name = c.fullname || c.company || '';
-                              setUploadCustomerName(name);
-                              setUploadCusQuery(name);
-                              setUploadCustomerLocation(c.address || '');
-                              setUploadCusOpen(false);
-                              setUploadCusError(false);
-                            }}
-                            className="w-full text-left px-3 py-2 text-sm hover:bg-amber-50 border-b border-gray-100 last:border-0"
-                          >
-                            <span className="font-medium">{c.fullname || c.company}</span>
-                            {c.address && <span className="text-xs text-gray-400 ml-2">{c.address}</span>}
-                          </button>
-                        ))}
+
+                {/* Selected customer card */}
+                {uploadCusSelected ? (
+                  <div className="flex items-start justify-between gap-3 p-3 bg-white rounded-lg border border-green-300 shadow-sm">
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
+                        <User className="w-5 h-5 text-green-600" />
                       </div>
-                    )}
+                      <div>
+                        <p className="font-bold text-gray-800 text-sm">{uploadCusSelected.fullname || uploadCusSelected.company}</p>
+                        {uploadCusSelected.company && uploadCusSelected.fullname && (
+                          <p className="text-xs text-gray-500">{uploadCusSelected.company}</p>
+                        )}
+                        <p className="text-xs text-gray-400 mt-0.5">ID: {uploadCusSelected.cusID}{uploadCusSelected.phone ? ` · ${uploadCusSelected.phone}` : ''}</p>
+                        {uploadCustomerLocation && (
+                          <p className="text-xs text-blue-600 mt-0.5">📍 {uploadCustomerLocation}</p>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setUploadCusSelected(null);
+                        setUploadCusID(null);
+                        setUploadCustomerName('');
+                        setUploadCusQuery('');
+                        setUploadCustomerLocation('');
+                        setSavedToDB(false);
+                      }}
+                      className="text-xs px-2 py-1 bg-gray-100 hover:bg-red-100 text-gray-500 hover:text-red-600 rounded-lg transition flex-shrink-0"
+                    >
+                      {lang === 'th' ? 'เปลี่ยน' : 'Change'}
+                    </button>
                   </div>
-                  <input
-                    type="text"
-                    value={uploadCustomerLocation}
-                    onChange={e => setUploadCustomerLocation(e.target.value)}
-                    placeholder={lang === 'th' ? 'สถานที่ติดตั้ง...' : 'Installation site...'}
-                    className="flex-1 min-w-[180px] px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-300"
-                  />
-                </div>
-                {uploadCusError && !uploadCustomerName.trim() && (
-                  <p className="text-xs text-red-500 mt-2 flex items-center gap-1">
+                ) : (
+                  <div className="flex gap-3 flex-wrap">
+                    <div className="relative flex-1 min-w-[260px]">
+                      <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400 pointer-events-none" />
+                      <input
+                        type="text"
+                        value={uploadCusQuery}
+                        onChange={e => searchUploadCustomers(e.target.value)}
+                        onBlur={() => setTimeout(() => setUploadCusOpen(false), 180)}
+                        onFocus={() => { if (uploadCusResults.length > 0) setUploadCusOpen(true); }}
+                        placeholder={lang === 'th' ? 'พิมพ์ชื่อลูกค้าเพื่อค้นหาจากฐานข้อมูล...' : 'Type to search customers from database...'}
+                        className={`w-full pl-9 pr-9 py-2.5 text-sm border-2 rounded-lg focus:outline-none focus:ring-2 ${
+                          uploadCusError ? 'border-red-400 focus:ring-red-300 bg-red-50' : 'border-blue-300 focus:ring-blue-300 bg-white'
+                        }`}
+                      />
+                      {uploadCusLoading && (
+                        <span className="absolute right-3 top-3 w-4 h-4 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin" />
+                      )}
+                      {uploadCusOpen && uploadCusResults.length > 0 && (
+                        <div className="absolute z-50 top-full left-0 right-0 bg-white border border-gray-200 rounded-xl shadow-xl mt-1 max-h-56 overflow-auto">
+                          {uploadCusResults.map(c => (
+                            <button
+                              key={c.cusID}
+                              onMouseDown={() => {
+                                const name = c.fullname || c.company || '';
+                                setUploadCustomerName(name);
+                                setUploadCusQuery(name);
+                                setUploadCustomerLocation(c.address || '');
+                                setUploadCusID(c.cusID);
+                                setUploadCusSelected(c);
+                                setUploadCusOpen(false);
+                                setUploadCusError(false);
+                              }}
+                              className="w-full text-left px-4 py-2.5 text-sm hover:bg-blue-50 border-b border-gray-100 last:border-0 flex items-center gap-3"
+                            >
+                              <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 text-xs font-bold text-blue-700">
+                                {(c.fullname || c.company || '?')[0].toUpperCase()}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="font-semibold text-gray-800 truncate">{c.fullname || c.company}</p>
+                                <p className="text-xs text-gray-400 truncate">
+                                  ID: {c.cusID}{c.company && c.fullname ? ` · ${c.company}` : ''}{c.address ? ` · ${c.address}` : ''}
+                                </p>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {uploadCusOpen && uploadCusResults.length === 0 && uploadCusQuery.length > 0 && !uploadCusLoading && (
+                        <div className="absolute z-50 top-full left-0 right-0 bg-white border border-gray-200 rounded-xl shadow-lg mt-1 px-4 py-3 text-sm text-gray-400">
+                          {lang === 'th' ? 'ไม่พบลูกค้าในฐานข้อมูล' : 'No customers found'}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {uploadCusError && !uploadCusSelected && (
+                  <p className="text-xs text-red-600 mt-2 font-semibold flex items-center gap-1">
                     <AlertTriangle className="w-3.5 h-3.5" />
-                    {lang === 'th' ? 'กรุณาระบุชื่อลูกค้าก่อนบันทึกลงฐานข้อมูล' : 'Customer name is required before saving to database'}
+                    {lang === 'th' ? 'กรุณาเลือกลูกค้าจากฐานข้อมูลก่อนบันทึก' : 'Please select a customer from the database before saving'}
                   </p>
                 )}
               </div>

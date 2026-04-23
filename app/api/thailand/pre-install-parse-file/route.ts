@@ -11,6 +11,7 @@ async function initTables() {
       CREATE TABLE IF NOT EXISTS th_pre_install_batches (
         id INT AUTO_INCREMENT PRIMARY KEY,
         batchId VARCHAR(100) NOT NULL UNIQUE,
+        cusID INT DEFAULT NULL,
         customerName VARCHAR(255) DEFAULT '',
         location VARCHAR(500) DEFAULT '',
         createdAt DATETIME DEFAULT NULL,
@@ -18,6 +19,10 @@ async function initTables() {
         KEY idx_batchId (batchId)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     `)
+    await conn.execute(`
+      ALTER TABLE th_pre_install_batches
+      ADD COLUMN IF NOT EXISTS cusID INT DEFAULT NULL
+    `).catch(() => {})
     await conn.execute(`
       CREATE TABLE IF NOT EXISTS th_pre_install_phase_records (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -206,6 +211,8 @@ export async function POST(req: NextRequest) {
     const batchId = String(formData.get('batchId') || `batch_${Date.now()}`)
     const customerName = String(formData.get('customerName') || '')
     const location = String(formData.get('location') || '')
+    const cusIDRaw = formData.get('cusID')
+    const cusID = cusIDRaw && String(cusIDRaw) !== '' ? parseInt(String(cusIDRaw)) : null
     const action = String(formData.get('action') || 'save') // 'preview' = parse only, 'save' = parse + save to DB
 
     if (!file) return NextResponse.json({ error: 'No file' }, { status: 400 })
@@ -234,9 +241,13 @@ export async function POST(req: NextRequest) {
       const conn = await pool.getConnection()
       try {
         await conn.execute(
-          `INSERT IGNORE INTO th_pre_install_batches (batchId, customerName, location, createdAt)
-           VALUES (?, ?, ?, NOW())`,
-          [batchId, customerName, location]
+          `INSERT INTO th_pre_install_batches (batchId, cusID, customerName, location, createdAt)
+           VALUES (?, ?, ?, ?, NOW())
+           ON DUPLICATE KEY UPDATE
+             cusID = COALESCE(VALUES(cusID), cusID),
+             customerName = VALUES(customerName),
+             location = VALUES(location)`,
+          [batchId, cusID, customerName, location]
         )
 
         await conn.execute(
