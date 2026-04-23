@@ -93,7 +93,7 @@ export default function ThailandPreInstallationAnalysis() {
   const [uploadCustomerName, setUploadCustomerName] = useState('');
   const [uploadCustomerLocation, setUploadCustomerLocation] = useState('');
   const [uploadCusID, setUploadCusID] = useState<number | null>(null);
-  type UploadCusRow = { cusID: number; fullname: string; company: string; phone: string; tambon?: string; amphoe?: string; province?: string; house_number?: string };
+  type UploadCusRow = { cusID: number; fullname: string; company: string; phone: string; address?: string };
   const [uploadCusSelected, setUploadCusSelected] = useState<UploadCusRow | null>(null);
   const [uploadCusQuery, setUploadCusQuery] = useState('');
   const [uploadCusResults, setUploadCusResults] = useState<UploadCusRow[]>([]);
@@ -102,8 +102,7 @@ export default function ThailandPreInstallationAnalysis() {
   const [uploadCusError, setUploadCusError] = useState(false);
   const uploadCusDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const buildAddress = (c: UploadCusRow) =>
-    [c.house_number, c.tambon, c.amphoe, c.province].filter(Boolean).join(' ');
+  const buildAddress = (c: UploadCusRow) => c.address || '';
 
   const fetchUploadCustomers = async (q: string) => {
     setUploadCusLoading(true);
