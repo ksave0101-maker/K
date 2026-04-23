@@ -89,6 +89,33 @@ export default function ThailandPreInstallationAnalysis() {
   const [savedToDB, setSavedToDB] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
+  // Upload section — customer selection (required before saving to DB)
+  const [uploadCustomerName, setUploadCustomerName] = useState('');
+  const [uploadCustomerLocation, setUploadCustomerLocation] = useState('');
+  const [uploadCusQuery, setUploadCusQuery] = useState('');
+  const [uploadCusResults, setUploadCusResults] = useState<{ cusID: number; fullname: string; company: string; address: string }[]>([]);
+  const [uploadCusOpen, setUploadCusOpen] = useState(false);
+  const [uploadCusLoading, setUploadCusLoading] = useState(false);
+  const [uploadCusError, setUploadCusError] = useState(false);
+  const uploadCusDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const searchUploadCustomers = (q: string) => {
+    setUploadCusQuery(q);
+    setUploadCustomerName(q);
+    setUploadCusError(false);
+    if (uploadCusDebounceRef.current) clearTimeout(uploadCusDebounceRef.current);
+    if (!q.trim()) { setUploadCusResults([]); setUploadCusOpen(false); return; }
+    uploadCusDebounceRef.current = setTimeout(async () => {
+      setUploadCusLoading(true);
+      try {
+        const res = await fetch(`/api/customers?q=${encodeURIComponent(q)}`);
+        const json = await res.json();
+        setUploadCusResults(json.customers || []);
+        setUploadCusOpen(true);
+      } catch { setUploadCusResults([]); } finally { setUploadCusLoading(false); }
+    }, 300);
+  };
+
   const setPhaseFile = (meter: number, phase: 'L1' | 'L2' | 'L3', file: File | null) => {
     setPhaseFiles(prev => ({ ...prev, [meter]: { ...prev[meter], [phase]: file } }));
     const key = `${meter}-${phase}`;
@@ -114,6 +141,8 @@ export default function ThailandPreInstallationAnalysis() {
       fd.append('phase', phase);
       fd.append('batchId', activeBatchIdUpload);
       fd.append('action', mode);
+      fd.append('customerName', uploadCustomerName);
+      fd.append('location', uploadCustomerLocation);
       const res = await fetch('/api/thailand/pre-install-parse-file', { method: 'POST', body: fd });
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || 'Parse failed');
@@ -139,8 +168,14 @@ export default function ThailandPreInstallationAnalysis() {
   };
 
   const saveAllPhasesToDB = async (meter: number) => {
+    if (!uploadCustomerName.trim()) {
+      setUploadCusError(true);
+      setUploadError(lang === 'th' ? 'กรุณาเลือกหรือพิมพ์ชื่อลูกค้าก่อนบันทึก' : 'Please select a customer name before saving');
+      return;
+    }
     setIsSaving(true);
     setUploadSuccess(null);
+    setUploadError(null);
     try {
       for (const phase of ['L1', 'L2', 'L3'] as const) {
         if (phaseFiles[meter][phase]) await parsePhaseFile(meter, phase, 'save');
@@ -620,6 +655,73 @@ export default function ThailandPreInstallationAnalysis() {
                   ? 'อัพโหลดไฟล์ข้อมูลกระแสไฟฟ้าที่เทสไว้ก่อนการติดตั้งเป็นเวลา 7 วัน (CSV / Excel / PDF)'
                   : 'Upload 7-day pre-installation current test data files (CSV / Excel / PDF)'}
               </p>
+
+              {/* Customer Name — required before saving */}
+              <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+                <p className="text-sm font-semibold text-amber-800 mb-3 flex items-center gap-2">
+                  <User className="w-4 h-4" />
+                  {lang === 'th' ? 'ชื่อลูกค้า / สถานที่ติดตั้ง (จำเป็นก่อนบันทึก)' : 'Customer Name / Site (required before saving)'}
+                  <span className="text-red-500">*</span>
+                </p>
+                <div className="flex gap-3 flex-wrap">
+                  <div className="relative flex-1 min-w-[220px]">
+                    <input
+                      type="text"
+                      value={uploadCusQuery}
+                      onChange={e => searchUploadCustomers(e.target.value)}
+                      onBlur={() => setTimeout(() => setUploadCusOpen(false), 150)}
+                      placeholder={lang === 'th' ? 'พิมพ์ชื่อลูกค้า...' : 'Type customer name...'}
+                      className={`w-full px-3 py-2 text-sm border-2 rounded-lg focus:outline-none focus:ring-2 ${
+                        uploadCusError && !uploadCustomerName.trim()
+                          ? 'border-red-400 focus:ring-red-300 bg-red-50'
+                          : uploadCustomerName.trim()
+                          ? 'border-green-400 focus:ring-green-300 bg-green-50'
+                          : 'border-gray-300 focus:ring-amber-300'
+                      }`}
+                    />
+                    {uploadCusLoading && (
+                      <span className="absolute right-2 top-2.5 w-4 h-4 border-2 border-gray-300 border-t-amber-500 rounded-full animate-spin" />
+                    )}
+                    {uploadCustomerName.trim() && !uploadCusLoading && (
+                      <CheckCircle className="absolute right-2 top-2.5 w-4 h-4 text-green-500" />
+                    )}
+                    {uploadCusOpen && uploadCusResults.length > 0 && (
+                      <div className="absolute z-50 top-full left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg mt-1 max-h-48 overflow-auto">
+                        {uploadCusResults.map(c => (
+                          <button
+                            key={c.cusID}
+                            onMouseDown={() => {
+                              const name = c.fullname || c.company || '';
+                              setUploadCustomerName(name);
+                              setUploadCusQuery(name);
+                              setUploadCustomerLocation(c.address || '');
+                              setUploadCusOpen(false);
+                              setUploadCusError(false);
+                            }}
+                            className="w-full text-left px-3 py-2 text-sm hover:bg-amber-50 border-b border-gray-100 last:border-0"
+                          >
+                            <span className="font-medium">{c.fullname || c.company}</span>
+                            {c.address && <span className="text-xs text-gray-400 ml-2">{c.address}</span>}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <input
+                    type="text"
+                    value={uploadCustomerLocation}
+                    onChange={e => setUploadCustomerLocation(e.target.value)}
+                    placeholder={lang === 'th' ? 'สถานที่ติดตั้ง...' : 'Installation site...'}
+                    className="flex-1 min-w-[180px] px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-300"
+                  />
+                </div>
+                {uploadCusError && !uploadCustomerName.trim() && (
+                  <p className="text-xs text-red-500 mt-2 flex items-center gap-1">
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    {lang === 'th' ? 'กรุณาระบุชื่อลูกค้าก่อนบันทึกลงฐานข้อมูล' : 'Customer name is required before saving to database'}
+                  </p>
+                )}
+              </div>
 
               {/* Meter Selector */}
               <div className="flex items-center gap-3 mb-6">
