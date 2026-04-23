@@ -93,29 +93,40 @@ export default function ThailandPreInstallationAnalysis() {
   const [uploadCustomerName, setUploadCustomerName] = useState('');
   const [uploadCustomerLocation, setUploadCustomerLocation] = useState('');
   const [uploadCusID, setUploadCusID] = useState<number | null>(null);
-  const [uploadCusSelected, setUploadCusSelected] = useState<{ cusID: number; fullname: string; company: string; address: string; phone?: string } | null>(null);
+  type UploadCusRow = { cusID: number; fullname: string; company: string; phone: string; tambon?: string; amphoe?: string; province?: string; house_number?: string };
+  const [uploadCusSelected, setUploadCusSelected] = useState<UploadCusRow | null>(null);
   const [uploadCusQuery, setUploadCusQuery] = useState('');
-  const [uploadCusResults, setUploadCusResults] = useState<{ cusID: number; fullname: string; company: string; address: string; phone: string }[]>([]);
+  const [uploadCusResults, setUploadCusResults] = useState<UploadCusRow[]>([]);
   const [uploadCusOpen, setUploadCusOpen] = useState(false);
   const [uploadCusLoading, setUploadCusLoading] = useState(false);
   const [uploadCusError, setUploadCusError] = useState(false);
   const uploadCusDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const buildAddress = (c: UploadCusRow) =>
+    [c.house_number, c.tambon, c.amphoe, c.province].filter(Boolean).join(' ');
+
+  const fetchUploadCustomers = async (q: string) => {
+    setUploadCusLoading(true);
+    try {
+      const res = await fetch(`/api/customers?q=${encodeURIComponent(q)}`);
+      const json = await res.json();
+      const list: UploadCusRow[] = json.customers || [];
+      setUploadCusResults(list);
+      setUploadCusOpen(list.length > 0);
+    } catch { setUploadCusResults([]); } finally { setUploadCusLoading(false); }
+  };
 
   const searchUploadCustomers = (q: string) => {
     setUploadCusQuery(q);
     setUploadCustomerName(q);
     setUploadCusError(false);
     if (uploadCusDebounceRef.current) clearTimeout(uploadCusDebounceRef.current);
-    if (!q.trim()) { setUploadCusResults([]); setUploadCusOpen(false); return; }
-    uploadCusDebounceRef.current = setTimeout(async () => {
-      setUploadCusLoading(true);
-      try {
-        const res = await fetch(`/api/customers?q=${encodeURIComponent(q)}`);
-        const json = await res.json();
-        setUploadCusResults(json.customers || []);
-        setUploadCusOpen(true);
-      } catch { setUploadCusResults([]); } finally { setUploadCusLoading(false); }
-    }, 300);
+    uploadCusDebounceRef.current = setTimeout(() => fetchUploadCustomers(q), 300);
+  };
+
+  const openUploadCusDropdown = () => {
+    if (uploadCusResults.length > 0) { setUploadCusOpen(true); return; }
+    fetchUploadCustomers(uploadCusQuery);
   };
 
   const setPhaseFile = (meter: number, phase: 'L1' | 'L2' | 'L3', file: File | null) => {
@@ -683,8 +694,8 @@ export default function ThailandPreInstallationAnalysis() {
                           <p className="text-xs text-gray-500">{uploadCusSelected.company}</p>
                         )}
                         <p className="text-xs text-gray-400 mt-0.5">ID: {uploadCusSelected.cusID}{uploadCusSelected.phone ? ` · ${uploadCusSelected.phone}` : ''}</p>
-                        {uploadCustomerLocation && (
-                          <p className="text-xs text-blue-600 mt-0.5">📍 {uploadCustomerLocation}</p>
+                        {buildAddress(uploadCusSelected) && (
+                          <p className="text-xs text-blue-600 mt-0.5">📍 {buildAddress(uploadCusSelected)}</p>
                         )}
                       </div>
                     </div>
@@ -710,8 +721,8 @@ export default function ThailandPreInstallationAnalysis() {
                         type="text"
                         value={uploadCusQuery}
                         onChange={e => searchUploadCustomers(e.target.value)}
-                        onBlur={() => setTimeout(() => setUploadCusOpen(false), 180)}
-                        onFocus={() => { if (uploadCusResults.length > 0) setUploadCusOpen(true); }}
+                        onBlur={() => setTimeout(() => setUploadCusOpen(false), 200)}
+                        onFocus={openUploadCusDropdown}
                         placeholder={lang === 'th' ? 'พิมพ์ชื่อลูกค้าเพื่อค้นหาจากฐานข้อมูล...' : 'Type to search customers from database...'}
                         className={`w-full pl-9 pr-9 py-2.5 text-sm border-2 rounded-lg focus:outline-none focus:ring-2 ${
                           uploadCusError ? 'border-red-400 focus:ring-red-300 bg-red-50' : 'border-blue-300 focus:ring-blue-300 bg-white'
@@ -729,7 +740,7 @@ export default function ThailandPreInstallationAnalysis() {
                                 const name = c.fullname || c.company || '';
                                 setUploadCustomerName(name);
                                 setUploadCusQuery(name);
-                                setUploadCustomerLocation(c.address || '');
+                                setUploadCustomerLocation(buildAddress(c));
                                 setUploadCusID(c.cusID);
                                 setUploadCusSelected(c);
                                 setUploadCusOpen(false);
@@ -743,7 +754,7 @@ export default function ThailandPreInstallationAnalysis() {
                               <div className="flex-1 min-w-0">
                                 <p className="font-semibold text-gray-800 truncate">{c.fullname || c.company}</p>
                                 <p className="text-xs text-gray-400 truncate">
-                                  ID: {c.cusID}{c.company && c.fullname ? ` · ${c.company}` : ''}{c.address ? ` · ${c.address}` : ''}
+                                  ID: {c.cusID}{c.company && c.fullname ? ` · ${c.company}` : ''}{buildAddress(c) ? ` · ${buildAddress(c)}` : ''}
                                 </p>
                               </div>
                             </button>
