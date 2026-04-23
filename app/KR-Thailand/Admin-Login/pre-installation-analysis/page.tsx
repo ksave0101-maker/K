@@ -1275,17 +1275,9 @@ export default function ThailandPreInstallationAnalysis() {
                   <Activity className="w-5 h-5 mr-2 text-indigo-600" />
                   {lang === 'th' ? 'ฐานข้อมูลค่ากระแสไฟฟ้า แยกตามลูกค้า/สถานที่' : 'Current Record Database — by Customer / Site'}
                 </h3>
-                <button
-                  onClick={() => setShowNewCustomerForm(v => !v)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm transition"
-                >
-                  <Plus className="w-4 h-4" />
-                  {lang === 'th' ? 'เพิ่มลูกค้าใหม่' : 'New Customer'}
-                </button>
               </div>
 
-              {/* New customer form */}
-              {showNewCustomerForm && (
+              {false && (
                 <div className="mb-4 p-4 border-2 border-indigo-200 rounded-xl bg-indigo-50 flex flex-wrap gap-3 items-end">
                   {/* Customer search with DB autocomplete */}
                   <div className="flex-1 min-w-[220px] relative">
@@ -1361,7 +1353,7 @@ export default function ThailandPreInstallationAnalysis() {
               {/* Customer tabs / selector */}
               {batches.length === 0 ? (
                 <div className="text-center py-10 text-gray-400 text-sm">
-                  {lang === 'th' ? 'ยังไม่มีชุดข้อมูล กดปุ่ม "เพิ่มลูกค้าใหม่" เพื่อเริ่มต้น' : 'No batches yet. Click "New Customer" to get started.'}
+                  {lang === 'th' ? 'ยังไม่มีชุดข้อมูล อัพโหลดไฟล์ CSV และบันทึกเพื่อเริ่มต้น' : 'No batches yet. Upload a CSV file and save to get started.'}
                 </div>
               ) : (
                 <>
