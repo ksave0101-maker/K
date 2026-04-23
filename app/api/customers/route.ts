@@ -11,7 +11,7 @@ function mapRow(r: any) {
     company: r.contactPersonName || '',
     phone: r.phone || '',
     email: r.email || '',
-    address: r.locationProvince || '',
+    address: r.fullAddress || r.locationProvince || '',
     industryType: r.industryType || '',
     salesOwner: r.salesOwner || '',
     currentStage: r.currentStage || '',
@@ -20,22 +20,24 @@ function mapRow(r: any) {
 }
 
 const SELECT = `
-  SELECT MIN(customerID) AS customerID,
-         customerCompanyName,
-         MIN(contactPersonName) AS contactPersonName,
-         MIN(contactPosition)   AS contactPosition,
-         MIN(phone)             AS phone,
-         MIN(email)             AS email,
-         MIN(locationProvince)  AS locationProvince,
-         MIN(industryType)      AS industryType,
-         MIN(salesOwner)        AS salesOwner,
-         MIN(currentStage)      AS currentStage,
-         MIN(notes)             AS notes,
-         MIN(created_at)        AS created_at
-  FROM customers_detailed
+  SELECT MIN(cd.customerID)       AS customerID,
+         cd.customerCompanyName,
+         MIN(cd.contactPersonName) AS contactPersonName,
+         MIN(cd.contactPosition)   AS contactPosition,
+         MIN(cd.phone)             AS phone,
+         MIN(cd.email)             AS email,
+         MIN(cd.locationProvince)  AS locationProvince,
+         MIN(cd.industryType)      AS industryType,
+         MIN(cd.salesOwner)        AS salesOwner,
+         MIN(cd.currentStage)      AS currentStage,
+         MIN(cd.notes)             AS notes,
+         MIN(ac.address)           AS fullAddress,
+         MIN(cd.created_at)        AS created_at
+  FROM customers_detailed cd
+  LEFT JOIN acc_customers ac ON cd.acc_customer_id = ac.id
 `
 
-const GROUP_BY = `GROUP BY customerCompanyName`
+const GROUP_BY = `GROUP BY cd.customerCompanyName`
 
 // GET - ค้นหาลูกค้า
 export async function GET(req: NextRequest) {
@@ -64,8 +66,8 @@ export async function GET(req: NextRequest) {
       const s = `%${q}%`
       const [rows]: any = await conn.query(
         `${SELECT}
-         WHERE customerCompanyName LIKE ? OR contactPersonName LIKE ?
-            OR phone LIKE ? OR email LIKE ? OR locationProvince LIKE ?
+         WHERE cd.customerCompanyName LIKE ? OR cd.contactPersonName LIKE ?
+            OR cd.phone LIKE ? OR cd.email LIKE ? OR cd.locationProvince LIKE ?
          ${GROUP_BY}
          ORDER BY customerCompanyName ASC
          LIMIT 20`,
