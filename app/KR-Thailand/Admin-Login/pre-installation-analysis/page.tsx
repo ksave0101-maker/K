@@ -755,8 +755,11 @@ export default function ThailandPreInstallationAnalysis() {
                               <div className="flex-1 min-w-0">
                                 <p className="font-semibold text-gray-800 truncate">{c.fullname}</p>
                                 <p className="text-xs text-gray-400 truncate">
-                                  ID: {c.cusID}{c.company ? ` · ${c.company}` : ''}{buildAddress(c) ? ` · ${buildAddress(c)}` : ''}
+                                  ID: {c.cusID}{c.company ? ` · ${c.company}` : ''}
                                 </p>
+                                {buildAddress(c) && (
+                                  <p className="text-xs text-blue-500 truncate">📍 {buildAddress(c)}</p>
+                                )}
                               </div>
                             </button>
                           ))}

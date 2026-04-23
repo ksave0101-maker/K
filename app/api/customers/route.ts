@@ -20,9 +20,18 @@ function mapRow(r: any) {
 }
 
 const SELECT = `
-  SELECT MIN(customerID) AS customerID, customerCompanyName, contactPersonName, contactPosition,
-         phone, email, locationProvince, industryType, salesOwner,
-         currentStage, notes, MIN(created_at) AS created_at
+  SELECT MIN(customerID) AS customerID,
+         customerCompanyName,
+         MIN(contactPersonName) AS contactPersonName,
+         MIN(contactPosition)   AS contactPosition,
+         MIN(phone)             AS phone,
+         MIN(email)             AS email,
+         MIN(locationProvince)  AS locationProvince,
+         MIN(industryType)      AS industryType,
+         MIN(salesOwner)        AS salesOwner,
+         MIN(currentStage)      AS currentStage,
+         MIN(notes)             AS notes,
+         MIN(created_at)        AS created_at
   FROM customers_detailed
 `
 
