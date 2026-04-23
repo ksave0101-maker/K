@@ -3,6 +3,29 @@ import { pool } from '@/lib/mysql'
 
 export const runtime = 'nodejs'
 
+// Map customers_detailed row to a unified shape the frontend expects
+function mapRow(r: any) {
+  return {
+    cusID: r.customerID,
+    fullname: r.contactPersonName || r.customerCompanyName || '',
+    company: r.customerCompanyName || '',
+    phone: r.phone || '',
+    email: r.email || '',
+    address: r.locationProvince || '',
+    industryType: r.industryType || '',
+    salesOwner: r.salesOwner || '',
+    currentStage: r.currentStage || '',
+    created_at: r.created_at,
+  }
+}
+
+const SELECT = `
+  SELECT customerID, customerCompanyName, contactPersonName, contactPosition,
+         phone, email, locationProvince, industryType, salesOwner,
+         currentStage, notes, created_at
+  FROM customers_detailed
+`
+
 // GET - ค้นหาลูกค้า
 export async function GET(req: NextRequest) {
   try {
@@ -12,43 +35,31 @@ export async function GET(req: NextRequest) {
 
     const conn = await pool.getConnection()
     try {
-      // ถ้ามี id ให้ดึงข้อมูลลูกค้าตาม id
       if (id) {
-        const [rows]: any = await conn.query(
-          `SELECT cusID, fullname, email, phone, company, address, tax_id, message, created_by, created_at
-           FROM cus_detail
-           WHERE cusID = ?`,
-          [id]
-        )
+        const [rows]: any = await conn.query(`${SELECT} WHERE customerID = ?`, [id])
         if (rows.length === 0) {
           return NextResponse.json({ success: false, error: 'not_found' }, { status: 404 })
         }
-        return NextResponse.json({ success: true, customer: rows[0] })
+        return NextResponse.json({ success: true, customer: mapRow(rows[0]) })
       }
 
-      // ค้นหาลูกค้าตามชื่อ, email หรือ phone
-      // If no search query provided, return a default list (recent 100 customers)
       if (q.length < 1) {
         const [rows]: any = await conn.query(
-          `SELECT cusID, fullname, email, phone, company, address, tax_id, message, created_by, created_at
-           FROM cus_detail
-           ORDER BY fullname ASC
-           LIMIT 100`
+          `${SELECT} ORDER BY customerCompanyName ASC LIMIT 100`
         )
-        return NextResponse.json({ success: true, customers: rows })
+        return NextResponse.json({ success: true, customers: rows.map(mapRow) })
       }
 
-      const searchTerm = `%${q}%`
+      const s = `%${q}%`
       const [rows]: any = await conn.query(
-        `SELECT cusID, fullname, email, phone, company, address, tax_id, message, created_by, created_at
-         FROM cus_detail
-         WHERE fullname LIKE ? OR email LIKE ? OR phone LIKE ? OR company LIKE ?
-         ORDER BY fullname ASC
+        `${SELECT}
+         WHERE customerCompanyName LIKE ? OR contactPersonName LIKE ?
+            OR phone LIKE ? OR email LIKE ? OR locationProvince LIKE ?
+         ORDER BY customerCompanyName ASC
          LIMIT 20`,
-        [searchTerm, searchTerm, searchTerm, searchTerm]
+        [s, s, s, s, s]
       )
-
-      return NextResponse.json({ success: true, customers: rows })
+      return NextResponse.json({ success: true, customers: rows.map(mapRow) })
     } finally {
       conn.release()
     }
@@ -61,43 +72,25 @@ export async function GET(req: NextRequest) {
 // POST - เพิ่มลูกค้าใหม่
 export async function POST(req: NextRequest) {
   try {
-      const body = await req.json()
-      const { name, email, phone, company, address, tax_id, message, currentUserId, currentUserName, currentUserUsername } = body
+    const body = await req.json()
+    const { name, email, phone, company, address, salesOwner, industryType, notes } = body
 
-      if (!name) {
-        return NextResponse.json({ success: false, error: 'name_required' }, { status: 400 })
-      }
+    if (!name && !company) {
+      return NextResponse.json({ success: false, error: 'name_required' }, { status: 400 })
+    }
 
     const conn = await pool.getConnection()
     try {
-        // Use actual user info if available, fallback to 'thailand admin'
-        const createdBy = currentUserName || currentUserUsername || 'thailand admin'
-
-      try {
-        const [result]: any = await conn.query(
-          `INSERT INTO cus_detail (fullname, email, phone, company, address, tax_id, message, created_by)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          [name, email || '', phone || '', company || null,
-           address || '', tax_id || null, message || '', createdBy]
-        )
-
-        const customerId = result.insertId
-        // Fetch the inserted row to return full columns including created_at
-        const [rows]: any = await conn.query(
-          `SELECT cusID, fullname, email, phone, company, address, tax_id, message, created_by, created_at FROM cus_detail WHERE cusID = ?`,
-          [customerId]
-        )
-        const customerRow = rows && rows[0] ? rows[0] : null
-
-        return NextResponse.json({ success: true, customerId, customer: customerRow })
-      } catch (sqlErr: any) {
-        // Detect missing column error (MySQL errno 1054)
-        console.error('customers INSERT error:', sqlErr)
-        if (sqlErr && (sqlErr.errno === 1054 || sqlErr.code === 'ER_BAD_FIELD_ERROR')) {
-          return NextResponse.json({ success: false, error: 'missing_column', message: 'Database is missing a required column.' }, { status: 500 })
-        }
-        return NextResponse.json({ success: false, error: String(sqlErr) }, { status: 500 })
-      }
+      const [result]: any = await conn.query(
+        `INSERT INTO customers_detailed
+          (customerCompanyName, contactPersonName, phone, email, locationProvince, industryType, salesOwner, notes)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [company || name, name || company, phone || '', email || '',
+         address || '', industryType || '', salesOwner || '', notes || '']
+      )
+      const customerId = result.insertId
+      const [rows]: any = await conn.query(`${SELECT} WHERE customerID = ?`, [customerId])
+      return NextResponse.json({ success: true, customerId, customer: rows[0] ? mapRow(rows[0]) : null })
     } finally {
       conn.release()
     }
