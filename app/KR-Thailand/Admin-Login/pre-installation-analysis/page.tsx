@@ -185,43 +185,43 @@ export default function ThailandPreInstallationAnalysis() {
     }
     setShowDetailTable(true);
 
-    // Merge CSV records into Current Record Database table rows
-    const l1 = results.L1?.records || [];
-    const l2 = results.L2?.records || [];
-    const l3 = results.L3?.records || [];
-    const maxLen = Math.min(Math.max(l1.length, l2.length, l3.length), 500);
+    // Create one batch per phase — each file is independent
+    const phaseEntries = (['L1', 'L2', 'L3'] as const)
+      .map(ph => ({ ph, records: results[ph]?.records || [] }))
+      .filter(e => e.records.length > 0);
 
-    if (maxLen > 0) {
-      const csvRows: CurrentRecord[] = Array.from({ length: maxLen }, (_, i) => {
-        const ref = l1[i] || l2[i] || l3[i];
-        const rt = ref?.record_time || '';
-        let date = '', time = '';
+    if (phaseEntries.length > 0) {
+      const parseRT = (rt: string) => {
         const m = rt.match(/(\d{4}[-/]\d{2}[-/]\d{2})[T\s](\d{2}:\d{2})/);
-        if (m) { date = m[1].replace(/\//g, '-'); time = m[2]; }
-        else { date = rt; }
-        return {
-          id: i + 1,
-          date,
-          time,
-          L1: l1[i] ? String(l1[i].value) : '',
-          L2: l2[i] ? String(l2[i].value) : '',
-          L3: l3[i] ? String(l3[i].value) : '',
-          N: '',
-          voltage: ref?.voltage || '380',
-          pf: ref?.pf || '0.85',
-          note: '',
-        };
-      });
+        return m ? { date: m[1].replace(/\//g, '-'), time: m[2] } : { date: rt, time: '' };
+      };
 
-      const newBatch: CurrentBatch = {
-        batchId: newBatchId,
-        customerName: uploadCustomerName || `Meter ${meter}`,
+      const newBatches: CurrentBatch[] = phaseEntries.map(({ ph, records }) => ({
+        batchId: `${newBatchId}_${ph}`,
+        customerName: `${uploadCustomerName || `Meter ${meter}`} (${ph})`,
         location: uploadCustomerLocation || '',
         createdAt: getCurrentDateTime(),
-        records: csvRows,
-      };
-      setBatches(prev => [newBatch, ...prev.filter(b => b.batchId !== newBatchId)]);
-      setActiveBatchId(newBatchId);
+        records: records.slice(0, 500).map((r, i) => {
+          const { date, time } = parseRT(r.record_time);
+          return {
+            id: i + 1, date, time,
+            L1: ph === 'L1' ? String(r.value) : '',
+            L2: ph === 'L2' ? String(r.value) : '',
+            L3: ph === 'L3' ? String(r.value) : '',
+            N: '',
+            voltage: r.voltage || '380',
+            pf: r.pf || '0.85',
+            note: '',
+          };
+        }),
+      }));
+
+      const firstId = newBatches[0].batchId;
+      setBatches(prev => [
+        ...newBatches,
+        ...prev.filter(b => !b.batchId.startsWith(newBatchId)),
+      ]);
+      setActiveBatchId(firstId);
       setTimeout(() => batchTableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 200);
     }
 
