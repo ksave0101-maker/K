@@ -49,6 +49,15 @@ interface ParsedRecord {
   pf: string
 }
 
+function currentColumnAliases(phase: string): string[] {
+  const aliases: Record<string, string[]> = {
+    L1: ['current 1', 'current1', 'current_1', 'current-1', 'phase 1', 'phase1', 'l1', 'phase a', 'phasea', 'ia'],
+    L2: ['current 2', 'current2', 'current_2', 'current-2', 'phase 2', 'phase2', 'l2', 'phase b', 'phaseb', 'ib'],
+    L3: ['current 3', 'current3', 'current_3', 'current-3', 'phase 3', 'phase3', 'l3', 'phase c', 'phasec', 'ic'],
+  }
+  return aliases[phase] || []
+}
+
 // ── CSV parser ─────────────────────────────────────────────────────────────
 function parseCSV(text: string, phase: string): ParsedRecord[] {
   const lines = text.split(/\r?\n/).filter(l => l.trim())
@@ -64,10 +73,10 @@ function parseCSV(text: string, phase: string): ParsedRecord[] {
   }
 
   const tIdx = find('timestamp', 'datetime', 'date', 'time')
-  const vIdx = find(
-    phase.toLowerCase(), 'phase ' + phase[1].toLowerCase(),
-    'current', 'amp', 'amps', 'i_', 'ia', 'ib', 'ic', 'value', 'val'
-  )
+  const phaseSpecificIdx = find(...currentColumnAliases(phase))
+  const vIdx = phaseSpecificIdx >= 0
+    ? phaseSpecificIdx
+    : find('current', 'amp', 'amps', 'i_', 'value', 'val')
   const voltIdx = find('volt', 'v_', 'vl', 'kv')
   const pfIdx = find('pf', 'power_factor', 'powerfactor', 'cos')
 
@@ -103,9 +112,10 @@ function parseExcel(buffer: Buffer, phase: string): ParsedRecord[] {
   }
 
   const tIdx = find('timestamp', 'datetime', 'date', 'time')
-  const vIdx = find(
-    phase.toLowerCase(), 'current', 'amp', 'i_', 'value', 'val'
-  )
+  const phaseSpecificIdx = find(...currentColumnAliases(phase))
+  const vIdx = phaseSpecificIdx >= 0
+    ? phaseSpecificIdx
+    : find('current', 'amp', 'i_', 'value', 'val')
   const voltIdx = find('volt', 'v_')
   const pfIdx = find('pf', 'power_factor', 'cos')
 

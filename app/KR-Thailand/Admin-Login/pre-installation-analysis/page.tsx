@@ -143,7 +143,12 @@ export default function ThailandPreInstallationAnalysis() {
     }
   };
 
-  const parsePhaseFile = async (meter: number, phase: 'L1' | 'L2' | 'L3', mode: 'preview' | 'save' = 'preview'): Promise<PhaseResult | null> => {
+  const parsePhaseFile = async (
+    meter: number,
+    phase: 'L1' | 'L2' | 'L3',
+    mode: 'preview' | 'save' = 'preview',
+    batchIdOverride?: string,
+  ): Promise<PhaseResult | null> => {
     const file = phaseFiles[meter][phase];
     if (!file) return null;
     const key = `${meter}-${phase}`;
@@ -154,7 +159,7 @@ export default function ThailandPreInstallationAnalysis() {
       fd.append('file', file);
       fd.append('meter', String(meter));
       fd.append('phase', phase);
-      fd.append('batchId', activeBatchIdUpload);
+      fd.append('batchId', batchIdOverride || activeBatchIdUpload);
       fd.append('action', mode);
       fd.append('customerName', uploadCustomerName);
       fd.append('location', uploadCustomerLocation);
@@ -178,54 +183,91 @@ export default function ThailandPreInstallationAnalysis() {
     setShowDetailTable(false);
     setSavedToDB(false);
     setUploadSuccess(null);
+    setUploadError(null);
 
     const results: { L1: PhaseResult | null; L2: PhaseResult | null; L3: PhaseResult | null } = { L1: null, L2: null, L3: null };
     for (const phase of ['L1', 'L2', 'L3'] as const) {
-      if (phaseFiles[meter][phase]) results[phase] = await parsePhaseFile(meter, phase, 'preview');
+      if (phaseFiles[meter][phase]) results[phase] = await parsePhaseFile(meter, phase, 'save', newBatchId);
     }
     setShowDetailTable(true);
 
-    // Create one batch per phase — each file is independent
-    const phaseEntries = (['L1', 'L2', 'L3'] as const)
-      .map(ph => ({ ph, records: results[ph]?.records || [] }))
-      .filter(e => e.records.length > 0);
+    const maxLen = Math.max(
+      results.L1?.records?.length ?? 0,
+      results.L2?.records?.length ?? 0,
+      results.L3?.records?.length ?? 0,
+    );
 
-    if (phaseEntries.length > 0) {
+    if (maxLen > 0) {
       const parseRT = (rt: string) => {
-        const m = rt.match(/(\d{4}[-/]\d{2}[-/]\d{2})[T\s](\d{2}:\d{2})/);
-        return m ? { date: m[1].replace(/\//g, '-'), time: m[2] } : { date: rt, time: '' };
+        const value = String(rt || '').trim();
+        const ymd = value.match(/(\d{4}[-/]\d{1,2}[-/]\d{1,2})[T\s]+(\d{1,2}:\d{2})/);
+        if (ymd) {
+          const date = ymd[1]
+            .replace(/\//g, '-')
+            .split('-')
+            .map((part, idx) => idx === 0 ? part.padStart(4, '0') : part.padStart(2, '0'))
+            .join('-');
+          return { date, time: ymd[2].padStart(5, '0') };
+        }
+        const dmy = value.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})(?:\s+(\d{1,2}:\d{2}))?/);
+        if (dmy) return { date: `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`, time: dmy[4] ? dmy[4].padStart(5, '0') : '' };
+        const hm = value.match(/(\d{1,2}:\d{2})/);
+        return { date: '', time: hm ? hm[1].padStart(5, '0') : '' };
       };
 
-      const newBatches: CurrentBatch[] = phaseEntries.map(({ ph, records }) => ({
-        batchId: `${newBatchId}_${ph}`,
-        customerName: `${uploadCustomerName || `Meter ${meter}`} (${ph})`,
+      const records: CurrentRecord[] = Array.from({ length: Math.min(maxLen, 2000) }, (_, i) => {
+        const l1 = results.L1?.records?.[i];
+        const l2 = results.L2?.records?.[i];
+        const l3 = results.L3?.records?.[i];
+        const source = l1 || l2 || l3;
+        const { date, time } = parseRT(source?.record_time || String(i + 1));
+        return {
+          id: i + 1,
+          date,
+          time,
+          L1: l1 ? String(l1.value) : '',
+          L2: l2 ? String(l2.value) : '',
+          L3: l3 ? String(l3.value) : '',
+          N: '',
+          voltage: l1?.voltage || l2?.voltage || l3?.voltage || '380',
+          pf: l1?.pf || l2?.pf || l3?.pf || '0.85',
+          note: '',
+        };
+      });
+
+      const customerName = uploadCustomerName || uploadCusSelected?.fullname || uploadCusSelected?.company || `Meter ${meter}`;
+      const batch: CurrentBatch = {
+        batchId: newBatchId,
+        customerName: `${customerName} - Meter ${meter}`,
         location: uploadCustomerLocation || '',
         createdAt: getCurrentDateTime(),
-        records: records.slice(0, 500).map((r, i) => {
-          const { date, time } = parseRT(r.record_time);
-          return {
-            id: i + 1, date, time,
-            L1: ph === 'L1' ? String(r.value) : '',
-            L2: ph === 'L2' ? String(r.value) : '',
-            L3: ph === 'L3' ? String(r.value) : '',
-            N: '',
-            voltage: r.voltage || '380',
-            pf: r.pf || '0.85',
-            note: '',
-          };
-        }),
-      }));
+        records,
+      };
 
-      const firstId = newBatches[0].batchId;
-      setBatches(prev => [
-        ...newBatches,
-        ...prev.filter(b => !b.batchId.startsWith(newBatchId)),
-      ]);
-      setActiveBatchId(firstId);
+      const updated = [
+        batch,
+        ...batches.filter(b => b.batchId !== newBatchId),
+      ];
+      saveBatches(updated);
+      setActiveBatchId(newBatchId);
       setTimeout(() => batchTableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 200);
+      setUploadError(null);
+      setUploadSuccess(lang === 'th' ? 'ดึงข้อมูลสำเร็จ แสดง Preview ใน Current Record Database และกำลัง Auto-save' : 'Preview loaded in Current Record Database and auto-save is running');
+    } else {
+      setUploadError(lang === 'th' ? 'ไม่พบข้อมูลที่อ่านได้จากไฟล์ กรุณาตรวจสอบรูปแบบไฟล์' : 'No readable data was found in the uploaded file(s). Please check the file format.');
     }
+  };
 
-    setUploadSuccess(lang === 'th' ? 'Preview พร้อมแล้ว — กรุณาตรวจสอบข้อมูล แล้วกดปุ่ม "บันทึกลงฐานข้อมูล"' : 'Preview ready — please review the data, then click "Save to Database"');
+  const reloadBatches = () => {
+    fetch('/api/thailand/pre-install-batches')
+      .then(r => r.json())
+      .then(d => {
+        if (d.batches && d.batches.length > 0) {
+          setBatches(d.batches);
+          setActiveBatchId(d.batches[0].batchId);
+        }
+      })
+      .catch(() => {});
   };
 
   const saveAllPhasesToDB = async (meter: number) => {
@@ -239,10 +281,11 @@ export default function ThailandPreInstallationAnalysis() {
     setUploadError(null);
     try {
       for (const phase of ['L1', 'L2', 'L3'] as const) {
-        if (phaseFiles[meter][phase]) await parsePhaseFile(meter, phase, 'save');
+        if (phaseFiles[meter][phase]) await parsePhaseFile(meter, phase, 'save', activeBatchIdUpload);
       }
       setSavedToDB(true);
       setUploadSuccess(lang === 'th' ? 'บันทึกลงฐานข้อมูลเรียบร้อยแล้ว' : 'Saved to database successfully');
+      reloadBatches();
     } finally {
       setIsSaving(false);
     }
@@ -321,10 +364,12 @@ export default function ThailandPreInstallationAnalysis() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ batches: updated }),
         });
-        if (!res.ok) throw new Error('save failed');
+        const json = await res.json().catch(() => null);
+        if (!res.ok || json?.success === false) throw new Error(json?.error || 'save failed');
         setBatchSaveStatus('saved');
         setTimeout(() => setBatchSaveStatus('idle'), 2500);
-      } catch {
+      } catch (e: any) {
+        setUploadError(`${lang === 'th' ? 'บันทึกอัตโนมัติไม่สำเร็จ' : 'Auto-save failed'}: ${e.message || 'Unknown error'}`);
         setBatchSaveStatus('error');
       }
     }, 500);
@@ -1481,13 +1526,9 @@ export default function ThailandPreInstallationAnalysis() {
                               <th className="border border-indigo-200 px-2 py-2 text-left text-xs font-bold text-indigo-800 w-8">#</th>
                               <th className="border border-indigo-200 px-2 py-2 text-left text-xs font-bold text-indigo-800">{lang === 'th' ? 'วันที่' : 'Date'}</th>
                               <th className="border border-indigo-200 px-2 py-2 text-left text-xs font-bold text-indigo-800">{lang === 'th' ? 'เวลา' : 'Time'}</th>
-                              <th className="border border-indigo-200 px-2 py-2 text-center text-xs font-bold text-orange-700">L1 / เฟส A (A)</th>
-                              <th className="border border-indigo-200 px-2 py-2 text-center text-xs font-bold text-blue-700">L2 / เฟส B (A)</th>
-                              <th className="border border-indigo-200 px-2 py-2 text-center text-xs font-bold text-purple-700">L3 / เฟส C (A)</th>
-                              <th className="border border-indigo-200 px-2 py-2 text-center text-xs font-bold text-gray-600">N (A)</th>
-                              <th className="border border-indigo-200 px-2 py-2 text-center text-xs font-bold text-gray-600">{lang === 'th' ? 'แรงดัน (V)' : 'Voltage (V)'}</th>
-                              <th className="border border-indigo-200 px-2 py-2 text-center text-xs font-bold text-gray-600">PF</th>
-                              <th className="border border-indigo-200 px-2 py-2 text-left text-xs font-bold text-gray-600">{lang === 'th' ? 'หมายเหตุ' : 'Note'}</th>
+                              <th className="border border-indigo-200 px-2 py-2 text-center text-xs font-bold text-orange-700">L1</th>
+                              <th className="border border-indigo-200 px-2 py-2 text-center text-xs font-bold text-blue-700">L2</th>
+                              <th className="border border-indigo-200 px-2 py-2 text-center text-xs font-bold text-purple-700">L3</th>
                               <th className="border border-indigo-200 px-2 py-2 w-8"></th>
                             </tr>
                           </thead>
@@ -1507,7 +1548,7 @@ export default function ThailandPreInstallationAnalysis() {
                                     className="w-full px-1 py-0.5 text-xs border-0 bg-transparent focus:ring-1 focus:ring-indigo-400 rounded"
                                   />
                                 </td>
-                                {(['L1','L2','L3','N'] as const).map(phase => (
+                                {(['L1','L2','L3'] as const).map(phase => (
                                   <td key={phase} className="border border-gray-200 px-1 py-1">
                                     <input type="number" step="0.1" value={(row as any)[phase]}
                                       onChange={e => updateBatchRecord(activeBatch.batchId, row.id, phase, e.target.value)}
@@ -1515,30 +1556,11 @@ export default function ThailandPreInstallationAnalysis() {
                                       className={`w-full px-1 py-0.5 text-xs text-center border-0 bg-transparent focus:ring-1 focus:ring-indigo-400 rounded ${
                                         phase === 'L1' ? 'text-orange-700 font-medium' :
                                         phase === 'L2' ? 'text-blue-700 font-medium' :
-                                        phase === 'L3' ? 'text-purple-700 font-medium' : 'text-gray-700'
+                                        'text-purple-700 font-medium'
                                       }`}
                                     />
                                   </td>
                                 ))}
-                                <td className="border border-gray-200 px-1 py-1">
-                                  <input type="number" step="1" value={row.voltage}
-                                    onChange={e => updateBatchRecord(activeBatch.batchId, row.id, 'voltage', e.target.value)}
-                                    className="w-full px-1 py-0.5 text-xs text-center border-0 bg-transparent focus:ring-1 focus:ring-indigo-400 rounded"
-                                  />
-                                </td>
-                                <td className="border border-gray-200 px-1 py-1">
-                                  <input type="number" step="0.01" min="0" max="1" value={row.pf}
-                                    onChange={e => updateBatchRecord(activeBatch.batchId, row.id, 'pf', e.target.value)}
-                                    className="w-full px-1 py-0.5 text-xs text-center border-0 bg-transparent focus:ring-1 focus:ring-indigo-400 rounded"
-                                  />
-                                </td>
-                                <td className="border border-gray-200 px-1 py-1">
-                                  <input type="text" value={row.note}
-                                    onChange={e => updateBatchRecord(activeBatch.batchId, row.id, 'note', e.target.value)}
-                                    placeholder={lang === 'th' ? 'หมายเหตุ...' : 'Note...'}
-                                    className="w-full px-1 py-0.5 text-xs border-0 bg-transparent focus:ring-1 focus:ring-indigo-400 rounded"
-                                  />
-                                </td>
                                 <td className="border border-gray-200 px-1 py-1 text-center">
                                   <button onClick={() => deleteBatchRow(activeBatch.batchId, row.id)}
                                     className="p-0.5 hover:bg-red-100 rounded text-red-400 hover:text-red-600 transition"
@@ -1565,14 +1587,14 @@ export default function ThailandPreInstallationAnalysis() {
                                   <td className="border border-gray-300 px-2 py-1.5 text-xs text-center text-orange-700 font-bold">{avgL1}</td>
                                   <td className="border border-gray-300 px-2 py-1.5 text-xs text-center text-blue-700 font-bold">{avgL2}</td>
                                   <td className="border border-gray-300 px-2 py-1.5 text-xs text-center text-purple-700 font-bold">{avgL3}</td>
-                                  <td colSpan={5} className="border border-gray-300"></td>
+                                  <td colSpan={1} className="border border-gray-300"></td>
                                 </tr>
                                 <tr className="bg-red-50 font-semibold">
                                   <td colSpan={3} className="border border-gray-300 px-2 py-1.5 text-xs text-red-800">{lang === 'th' ? 'ค่าสูงสุด (Peak)' : 'Peak'}</td>
                                   <td className="border border-gray-300 px-2 py-1.5 text-xs text-center text-orange-700 font-bold">{maxL1}</td>
                                   <td className="border border-gray-300 px-2 py-1.5 text-xs text-center text-blue-700 font-bold">{maxL2}</td>
                                   <td className="border border-gray-300 px-2 py-1.5 text-xs text-center text-purple-700 font-bold">{maxL3}</td>
-                                  <td colSpan={5} className="border border-gray-300"></td>
+                                  <td colSpan={1} className="border border-gray-300"></td>
                                 </tr>
                               </tfoot>
                             );

@@ -1,8 +1,137 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { pool } from '@/lib/mysql'
 
+const powerCalculationColumnDefs: Record<string, string> = {
+  pre_inst_id: 'INT(11) NULL DEFAULT NULL',
+  usage_history: 'LONGTEXT NULL DEFAULT NULL',
+  voltage: 'DECIMAL(10,2) NULL DEFAULT NULL',
+  current: 'DECIMAL(10,2) NULL DEFAULT NULL',
+  power_factor: 'DECIMAL(5,4) NULL DEFAULT NULL',
+  phase_type: 'VARCHAR(20) NULL DEFAULT NULL',
+  company_name: 'VARCHAR(255) NULL DEFAULT NULL',
+  customer_name: 'VARCHAR(255) NULL DEFAULT NULL',
+  product_price: 'DECIMAL(15,2) NULL DEFAULT NULL',
+  avg_monthly_usage: 'DECIMAL(15,2) NULL DEFAULT NULL',
+  power_saving_rate: 'DECIMAL(5,2) NULL DEFAULT NULL',
+  unit_price: 'DECIMAL(10,2) NULL DEFAULT NULL',
+  expected_savings_percent: 'DECIMAL(5,2) NULL DEFAULT NULL',
+  device_cost: 'DECIMAL(15,2) NULL DEFAULT NULL',
+  amortize_months: 'INT(11) NULL DEFAULT NULL',
+  payment_months: 'INT(11) NULL DEFAULT NULL',
+  contracted_capacity: 'DECIMAL(15,2) NULL DEFAULT NULL',
+  peak_power: 'DECIMAL(15,2) NULL DEFAULT NULL',
+  device_capacity: 'DECIMAL(15,2) NULL DEFAULT NULL',
+  faucet_method: 'VARCHAR(255) NULL DEFAULT NULL',
+  usage_data_months: 'INT(11) NULL DEFAULT NULL',
+  emission_factor: 'DECIMAL(10,6) NULL DEFAULT NULL',
+  appliances: 'LONGTEXT NULL DEFAULT NULL',
+  monthly_kwh: 'LONGTEXT NULL DEFAULT NULL',
+  january_kwh: 'DECIMAL(15,2) NULL DEFAULT NULL',
+  january_cost: 'DECIMAL(15,2) NULL DEFAULT NULL',
+  february_kwh: 'DECIMAL(15,2) NULL DEFAULT NULL',
+  february_cost: 'DECIMAL(15,2) NULL DEFAULT NULL',
+  march_kwh: 'DECIMAL(15,2) NULL DEFAULT NULL',
+  march_cost: 'DECIMAL(15,2) NULL DEFAULT NULL',
+  april_kwh: 'DECIMAL(15,2) NULL DEFAULT NULL',
+  april_cost: 'DECIMAL(15,2) NULL DEFAULT NULL',
+  may_kwh: 'DECIMAL(15,2) NULL DEFAULT NULL',
+  may_cost: 'DECIMAL(15,2) NULL DEFAULT NULL',
+  june_kwh: 'DECIMAL(15,2) NULL DEFAULT NULL',
+  june_cost: 'DECIMAL(15,2) NULL DEFAULT NULL',
+  july_kwh: 'DECIMAL(15,2) NULL DEFAULT NULL',
+  july_cost: 'DECIMAL(15,2) NULL DEFAULT NULL',
+  august_kwh: 'DECIMAL(15,2) NULL DEFAULT NULL',
+  august_cost: 'DECIMAL(15,2) NULL DEFAULT NULL',
+  september_kwh: 'DECIMAL(15,2) NULL DEFAULT NULL',
+  september_cost: 'DECIMAL(15,2) NULL DEFAULT NULL',
+  october_kwh: 'DECIMAL(15,2) NULL DEFAULT NULL',
+  october_cost: 'DECIMAL(15,2) NULL DEFAULT NULL',
+  november_kwh: 'DECIMAL(15,2) NULL DEFAULT NULL',
+  november_cost: 'DECIMAL(15,2) NULL DEFAULT NULL',
+  december_kwh: 'DECIMAL(15,2) NULL DEFAULT NULL',
+  december_cost: 'DECIMAL(15,2) NULL DEFAULT NULL',
+  total_annual_kwh: 'DECIMAL(15,2) NULL DEFAULT NULL',
+  total_annual_cost: 'DECIMAL(15,2) NULL DEFAULT NULL',
+  average_monthly_kwh: 'DECIMAL(15,2) NULL DEFAULT NULL',
+  average_monthly_cost: 'DECIMAL(15,2) NULL DEFAULT NULL',
+  roi_years: 'DECIMAL(10,2) NULL DEFAULT NULL',
+  roi_months: 'DECIMAL(10,2) NULL DEFAULT NULL',
+  annual_savings_kwh: 'DECIMAL(15,2) NULL DEFAULT NULL',
+  annual_savings_baht: 'DECIMAL(15,2) NULL DEFAULT NULL',
+  monthly_savings_kwh: 'DECIMAL(15,2) NULL DEFAULT NULL',
+  monthly_savings_baht: 'DECIMAL(15,2) NULL DEFAULT NULL',
+  monthly_payment: 'DECIMAL(15,2) NULL DEFAULT NULL',
+  carbon_reduction: 'DECIMAL(15,4) NULL DEFAULT NULL',
+  breakeven_year: 'INT(11) NULL DEFAULT NULL',
+  cumulative_10year_savings: 'DECIMAL(15,2) NULL DEFAULT NULL',
+  twelve_months: 'LONGTEXT NULL DEFAULT NULL',
+  pre_install_results: 'LONGTEXT NULL DEFAULT NULL',
+  show_12month_modal: 'TINYINT(1) NULL DEFAULT 0',
+  status: "VARCHAR(20) NULL DEFAULT 'completed'",
+  updated_at: 'TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP',
+}
+
+let schemaEnsured = false
+let calcIdFixed = false
+
+async function ensurePowerCalculationsSchema() {
+  if (schemaEnsured) return
+  const conn = await pool.getConnection()
+  try {
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS power_calculations (
+        calcID INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        power_calcuNo VARCHAR(50) NULL,
+        title VARCHAR(255) NULL,
+        parameters LONGTEXT NULL,
+        result LONGTEXT NULL,
+        created_by VARCHAR(255) NULL,
+        created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+        cusID INT(11) NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `)
+
+    const [rows]: any = await conn.query('SHOW COLUMNS FROM power_calculations')
+    const existing = new Set(rows.map((r: any) => r.Field))
+    for (const [column, definition] of Object.entries(powerCalculationColumnDefs)) {
+      if (!existing.has(column)) {
+        await conn.execute(`ALTER TABLE power_calculations ADD COLUMN ${column} ${definition}`)
+      }
+    }
+
+    await conn.execute(`UPDATE power_calculations SET status = 'completed' WHERE status IS NULL`).catch(() => {})
+    schemaEnsured = true
+  } finally {
+    conn.release()
+  }
+}
+
+async function ensureCalcIdAutoIncrement() {
+  if (calcIdFixed) return
+  const conn = await pool.getConnection()
+  try {
+    // Check if calcID has AUTO_INCREMENT
+    const [cols]: any = await conn.query(
+      `SHOW COLUMNS FROM power_calculations WHERE Field = 'calcID'`
+    )
+    const extra: string = cols?.[0]?.Extra || ''
+    if (!extra.includes('auto_increment')) {
+      await conn.execute(
+        `ALTER TABLE power_calculations MODIFY COLUMN calcID INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY`
+      )
+      console.log('power_calculations: restored AUTO_INCREMENT on calcID')
+    }
+    calcIdFixed = true
+  } catch (e) {
+    console.error('ensureCalcIdAutoIncrement error:', e)
+  } finally {
+    conn.release()
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
+    await ensurePowerCalculationsSchema()
     const { searchParams } = new URL(request.url)
     const limit = parseInt(searchParams.get('limit') || '100')
     const offset = parseInt(searchParams.get('offset') || '0')
@@ -158,6 +287,8 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    await ensurePowerCalculationsSchema()
+    await ensureCalcIdAutoIncrement()
     const body = await request.json()
     const {
       title,
@@ -267,8 +398,15 @@ export async function POST(request: NextRequest) {
     const breakevenYear = roiYears ? Math.ceil(roiYears) : null
     const cumulative10YearSavings = (annualSavingsBaht * 10) - (productPrice || 0)
 
+    // Generate calcID manually to avoid dependence on AUTO_INCREMENT
+    const [maxRow]: any = await pool.query(
+      `SELECT COALESCE(MAX(calcID), 0) + 1 AS nextId FROM power_calculations`
+    )
+    const nextCalcID: number = maxRow[0].nextId
+
     const query = `
       INSERT INTO power_calculations (
+        calcID,
         power_calcuNo, title, parameters, result, created_by, cusID,
         pre_inst_id, usage_history, voltage, current, power_factor, phase_type,
         company_name, customer_name, product_price, avg_monthly_usage, power_saving_rate,
@@ -285,10 +423,11 @@ export async function POST(request: NextRequest) {
         monthly_savings_kwh, monthly_savings_baht, monthly_payment, carbon_reduction,
         breakeven_year, cumulative_10year_savings,
         twelve_months, pre_install_results, show_12month_modal, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `
 
     const [insertResult] = await pool.query(query, [
+      nextCalcID,
       power_calcuNo,
       title || 'Untitled Calculation',
       JSON.stringify(enrichedParameters),
@@ -369,7 +508,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      calcID: (insertResult as any).insertId,
+      calcID: (insertResult as any).insertId || nextCalcID,
       powerCalcuNo: power_calcuNo
     })
   } catch (error: any) {
@@ -383,6 +522,7 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
+    await ensurePowerCalculationsSchema()
     const body = await request.json()
     const {
       calcID,
