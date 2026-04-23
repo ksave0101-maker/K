@@ -965,16 +965,16 @@ export default function PowerCalculatorPage() {
                   </thead>
                   <tbody>
                     <tr>
-                      <td style={{ border: '1px solid #ddd', padding: '8px 12px', background: '#fffde7' }}>{L('Current (A)', 'กระแสไฟฟ้า (A)')}</td>
+                      <td style={{ border: '1px solid #ddd', padding: '8px 12px', background: '#fffde7' }}>{L('Current A', 'กระแสไฟฟ้า (A)')}</td>
                       <td style={{ border: '1px solid #ddd', padding: '8px 12px', textAlign: 'right' }}>
-                        <input type="number" className={styles.formInput} value={contractedCapacity || ''} onChange={e => setContractedCapacity(Number(e.target.value || 0))} style={{ width: 100, textAlign: 'right' }} /> <span style={{ color: '#d00', fontWeight: 600 }}>KVA</span>
+                        <input type="number" className={styles.formInput} value={contractedCapacity || ''} onChange={e => setContractedCapacity(Number(e.target.value || 0))} style={{ width: 100, textAlign: 'right' }} /> <span style={{ color: '#d00', fontWeight: 600 }}>kVA</span>
                       </td>
                       <td style={{ border: '1px solid #ddd', padding: '8px 12px' }}></td>
                     </tr>
                     <tr>
                       <td style={{ border: '1px solid #ddd', padding: '8px 12px', background: '#fffde7' }}>{L('Peak power', 'กำลังสูงสุด')}</td>
                       <td style={{ border: '1px solid #ddd', padding: '8px 12px', textAlign: 'right' }}>
-                        <input type="number" className={styles.formInput} value={peakPower || ''} onChange={e => setPeakPower(Number(e.target.value || 0))} style={{ width: 100, textAlign: 'right' }} /> <span style={{ color: '#d00', fontWeight: 600 }}>KW</span>
+                        <input type="number" className={styles.formInput} value={peakPower || ''} onChange={e => setPeakPower(Number(e.target.value || 0))} style={{ width: 100, textAlign: 'right' }} /> <span style={{ color: '#d00', fontWeight: 600 }}>kW</span>
                       </td>
                       <td style={{ border: '1px solid #ddd', padding: '8px 12px', color: '#0066cc' }}>{L('Maximum peak (Peak usage)', 'ค่าพีคสูงสุด (การใช้งานสูงสุด)')}</td>
                     </tr>
@@ -1066,7 +1066,7 @@ export default function PowerCalculatorPage() {
                           <option value="80">80</option>
                           <option value="100">100</option>
                           <option value="150">150</option>
-                        </select> <span style={{ color: '#d00', fontWeight: 600 }}>KVA</span>
+                        </select> <span style={{ color: '#d00', fontWeight: 600 }}>kVA</span>
                       </td>
                       <td style={{ border: '1px solid #ddd', padding: '8px 12px' }}></td>
                     </tr>
