@@ -3906,21 +3906,25 @@ export default function ThailandPreInstallationAnalysis() {
                 const demandCharge = powerPeakDemand * demandRate;
                 const monthlyBillAdvanced = (energyCharge + demandCharge + serviceCharge) * (1 + vatRate);
 
-                // Use selected Power Calculator bill for calibration if available, else fallback to 700k-1M
+                // Use only same-customer bill data (cusID matched) for calibration; no cross-customer fallback assumptions
                 const selectedBill = powerCalcBills.find((b: any) => b.calcID === selectedBillCalcID);
                 const billAvgCost = selectedBill ? Number(selectedBill.average_monthly_cost) : 0;
                 const billAvgKwh = selectedBill ? Number(selectedBill.average_monthly_kwh) : 0;
                 const hasBillData = billAvgCost > 0;
 
-                const historicalBillMin = hasBillData ? billAvgCost * 0.9 : 700000;
-                const historicalBillMax = hasBillData ? billAvgCost * 1.1 : 1000000;
-                const historicalBillMid = hasBillData ? billAvgCost : (historicalBillMin + historicalBillMax) / 2;
-                const requiredMultiplierMin = monthlyBillAdvanced > 0 ? historicalBillMin / monthlyBillAdvanced : 1;
-                const requiredMultiplierMax = monthlyBillAdvanced > 0 ? historicalBillMax / monthlyBillAdvanced : 1;
-                const requiredMultiplierMid = monthlyBillAdvanced > 0 ? historicalBillMid / monthlyBillAdvanced : 1;
-                const feederCoveragePct = monthlyBillAdvanced > 0 ? (monthlyBillAdvanced / historicalBillMid) * 100 : 100;
-                const calibratedMonthlyKwh = hasBillData && billAvgKwh > 0 ? billAvgKwh : monthlyKwh * requiredMultiplierMid;
-                const calibratedLossFromImbalance = metricPeakImbalance > 0 ? (metricPeakImbalance / 100) * 0.025 * calibratedMonthlyKwh : 0;
+                const historicalBillMin = hasBillData ? billAvgCost * 0.9 : null;
+                const historicalBillMax = hasBillData ? billAvgCost * 1.1 : null;
+                const historicalBillMid = hasBillData ? billAvgCost : null;
+                const requiredMultiplierMin = hasBillData && monthlyBillAdvanced > 0 && historicalBillMin !== null ? historicalBillMin / monthlyBillAdvanced : null;
+                const requiredMultiplierMax = hasBillData && monthlyBillAdvanced > 0 && historicalBillMax !== null ? historicalBillMax / monthlyBillAdvanced : null;
+                const requiredMultiplierMid = hasBillData && monthlyBillAdvanced > 0 && historicalBillMid !== null ? historicalBillMid / monthlyBillAdvanced : null;
+                const feederCoveragePct = hasBillData && monthlyBillAdvanced > 0 && historicalBillMid !== null
+                  ? (monthlyBillAdvanced / historicalBillMid) * 100
+                  : null;
+                const calibratedMonthlyKwh = hasBillData && billAvgKwh > 0 ? billAvgKwh : null;
+                const calibratedLossFromImbalance = calibratedMonthlyKwh && metricPeakImbalance > 0
+                  ? (metricPeakImbalance / 100) * 0.025 * calibratedMonthlyKwh
+                  : null;
                 const lossFromImbalance = metricPeakImbalance > 0 ? (metricPeakImbalance / 100) * 0.025 * monthlyKwh : 0;
                 return (
                   <div className="space-y-4">
@@ -3949,27 +3953,31 @@ export default function ThailandPreInstallationAnalysis() {
                         <p className="text-lg font-bold text-indigo-800">฿{monthlyBillAdvanced.toLocaleString('en', { maximumFractionDigits: 0 })}</p>
                         <p className="text-xs text-indigo-500 mt-1">{lang === 'th' ? 'Energy+Ft + Demand + Service + VAT' : 'Energy+Ft + Demand + Service + VAT'}</p>
                       </div>
-                      <div className="bg-purple-50 rounded-lg p-3 border border-purple-200">
-                        <p className="text-xs text-purple-600 mb-1">
+                      <div className={`rounded-lg p-3 border ${hasBillData ? 'bg-purple-50 border-purple-200' : 'bg-gray-50 border-gray-200'}`}>
+                        <p className={`text-xs mb-1 ${hasBillData ? 'text-purple-600' : 'text-gray-500'}`}>
                           {hasBillData
-                            ? (lang === 'th' ? '📋 บิลจริงลูกค้า (Power Calculator)' : '📋 Actual Bill (Power Calculator)')
-                            : (lang === 'th' ? 'ช่วงบิลจริงลูกค้า/เดือน' : 'Customer Actual Bill Range')}
+                            ? (lang === 'th' ? '📋 บิลจริงลูกค้าเดียวกัน (Power Calculator)' : '📋 Same-customer actual bill (Power Calculator)')
+                            : (lang === 'th' ? 'ไม่พบบิลของลูกค้ารายนี้ในฐานข้อมูล' : 'No same-customer bill found in database')}
                         </p>
-                        <p className="text-lg font-bold text-purple-800">
-                          {hasBillData
-                            ? `฿${historicalBillMid.toLocaleString('en', { maximumFractionDigits: 0 })}`
-                            : `฿${historicalBillMin.toLocaleString('en')} – ฿${historicalBillMax.toLocaleString('en')}`}
+                        <p className={`text-lg font-bold ${hasBillData ? 'text-purple-800' : 'text-gray-500'}`}>
+                          {hasBillData && historicalBillMid !== null
+                            ? `฿${historicalBillMid!.toLocaleString('en', { maximumFractionDigits: 0 })}`
+                            : 'N/A'}
                         </p>
-                        <p className="text-xs text-purple-500 mt-1">
-                          {hasBillData
-                            ? (lang === 'th' ? `เทียบโมเดล: x${requiredMultiplierMid.toFixed(2)}` : `vs model: x${requiredMultiplierMid.toFixed(2)}`)
-                            : (lang === 'th' ? `คิดเป็น x${requiredMultiplierMin.toFixed(2)} – x${requiredMultiplierMax.toFixed(2)} ของโมเดล` : `Equivalent to x${requiredMultiplierMin.toFixed(2)} – x${requiredMultiplierMax.toFixed(2)} of model`)}
+                        <p className={`text-xs mt-1 ${hasBillData ? 'text-purple-500' : 'text-gray-400'}`}>
+                          {hasBillData && requiredMultiplierMid !== null
+                            ? (lang === 'th' ? `เทียบโมเดล: x${requiredMultiplierMid!.toFixed(2)}` : `vs model: x${requiredMultiplierMid!.toFixed(2)}`)
+                            : (lang === 'th' ? 'ไม่คาลิเบรตข้ามลูกค้า (Same-customer only)' : 'No cross-customer calibration (same-customer only)')}
                         </p>
                       </div>
-                      <div className={`rounded-lg p-3 border ${feederCoveragePct >= 80 ? 'bg-green-50 border-green-200' : 'bg-yellow-50 border-yellow-200'}`}>
-                        <p className={`text-xs mb-1 ${feederCoveragePct >= 80 ? 'text-green-600' : 'text-yellow-700'}`}>{lang === 'th' ? 'ความครอบคลุมของจุดวัดเทียบทั้งไซต์' : 'Measured Feeder Coverage vs Whole Site'}</p>
-                        <p className={`text-lg font-bold ${feederCoveragePct >= 80 ? 'text-green-800' : 'text-yellow-800'}`}>{feederCoveragePct.toFixed(1)}%</p>
-                        <p className={`text-xs mt-1 ${feederCoveragePct >= 80 ? 'text-green-500' : 'text-yellow-600'}`}>{lang === 'th' ? 'ยิ่งต่ำยิ่งบ่งชี้ว่าข้อมูลอาจเป็นบาง feeder' : 'Lower values suggest this dataset is likely partial feeder data'}</p>
+                      <div className={`rounded-lg p-3 border ${feederCoveragePct === null ? 'bg-gray-50 border-gray-200' : feederCoveragePct >= 80 ? 'bg-green-50 border-green-200' : 'bg-yellow-50 border-yellow-200'}`}>
+                        <p className={`text-xs mb-1 ${feederCoveragePct === null ? 'text-gray-500' : feederCoveragePct >= 80 ? 'text-green-600' : 'text-yellow-700'}`}>{lang === 'th' ? 'ความครอบคลุมของจุดวัดเทียบทั้งไซต์' : 'Measured Feeder Coverage vs Whole Site'}</p>
+                        <p className={`text-lg font-bold ${feederCoveragePct === null ? 'text-gray-500' : feederCoveragePct >= 80 ? 'text-green-800' : 'text-yellow-800'}`}>{feederCoveragePct === null ? 'N/A' : `${feederCoveragePct.toFixed(1)}%`}</p>
+                        <p className={`text-xs mt-1 ${feederCoveragePct === null ? 'text-gray-400' : feederCoveragePct >= 80 ? 'text-green-500' : 'text-yellow-600'}`}>
+                          {feederCoveragePct === null
+                            ? (lang === 'th' ? 'ต้องมีบิลลูกค้ารายเดียวกันก่อน จึงคำนวณ coverage ได้' : 'Coverage requires same-customer bill data')
+                            : (lang === 'th' ? 'ยิ่งต่ำยิ่งบ่งชี้ว่าข้อมูลอาจเป็นบาง feeder' : 'Lower values suggest this dataset is likely partial feeder data')}
+                        </p>
                       </div>
                     </div>
 
@@ -3985,7 +3993,13 @@ export default function ThailandPreInstallationAnalysis() {
                         </p>
                         <p className="text-orange-700 mt-1">
                           ≈ {lossFromImbalance.toFixed(0)} kWh/{lang === 'th' ? 'เดือน' : 'mo'} ≈ ฿{(lossFromImbalance * electricityRate).toLocaleString('en', { maximumFractionDigits: 0 })}/{lang === 'th' ? 'เดือน' : 'mo'}
-                          {lang === 'th' ? ` · เมื่อคาลิเบรตเทียบบิลจริง ≈ ${calibratedLossFromImbalance.toFixed(0)} kWh/เดือน` : ` · calibrated to actual bill range: ≈ ${calibratedLossFromImbalance.toFixed(0)} kWh/mo`}
+                          {calibratedLossFromImbalance !== null
+                            ? (lang === 'th'
+                              ? ` · เมื่อคาลิเบรตด้วยบิลลูกค้ารายเดียวกัน ≈ ${calibratedLossFromImbalance.toFixed(0)} kWh/เดือน`
+                              : ` · calibrated with same-customer bill: ≈ ${calibratedLossFromImbalance.toFixed(0)} kWh/mo`)
+                            : (lang === 'th'
+                              ? ' · ไม่มีบิลลูกค้ารายเดียวกัน จึงไม่คาลิเบรตเพิ่ม'
+                              : ' · no same-customer bill, so no extra calibration')}
                         </p>
                       </div>
                     )}
@@ -4011,12 +4025,12 @@ export default function ThailandPreInstallationAnalysis() {
                         : 'Fallback energy method: average power × 24 (insufficient timestamp continuity for interval integration)')}</p>
                     <div className="p-3 rounded-lg border border-green-200 bg-green-50 text-sm text-green-800">
                       {lang === 'th'
-                        ? (hasBillData
-                            ? `คำอธิบายผล: จากข้อมูลโหลดนี้ ระบบคำนวณได้ ${monthlyKwh.toFixed(0)} kWh/เดือน (โมเดล ≈ ฿${monthlyBillAdvanced.toLocaleString('en', { maximumFractionDigits: 0 })}/เดือน). บิลจริงจาก Power Calculator คือ ฿${historicalBillMid.toLocaleString('en', { maximumFractionDigits: 0 })}/เดือน (${billAvgKwh > 0 ? `${billAvgKwh.toLocaleString('en', { maximumFractionDigits: 0 })} kWh/เดือน` : '—'}) ต้องสเกล x${requiredMultiplierMid.toFixed(2)} เพื่อให้สอดคล้องกัน ซึ่งบ่งชี้ถึงสัดส่วน feeder ที่วัดได้.`
-                            : `คำอธิบายผล: จากข้อมูลโหลดนี้ ระบบคำนวณได้ ${monthlyKwh.toFixed(0)} kWh/เดือน และค่าไฟแบบละเอียด ≈ ฿${monthlyBillAdvanced.toLocaleString('en', { maximumFractionDigits: 0 })}/เดือน (ต่ำกว่าบิลจริงช่วง 7แสน–1ล้าน). จึงประเมินว่าเป็นข้อมูลบางส่วนของทั้งไซต์ โดยต้องสเกลประมาณ x${requiredMultiplierMin.toFixed(2)}–x${requiredMultiplierMax.toFixed(2)} เพื่อสอดคล้องบิลจริง.`)
-                        : (hasBillData
-                            ? `Analysis: This dataset yields ${monthlyKwh.toFixed(0)} kWh/month (model ≈ ฿${monthlyBillAdvanced.toLocaleString('en', { maximumFractionDigits: 0 })}/month). Actual bill from Power Calculator is ฿${historicalBillMid.toLocaleString('en', { maximumFractionDigits: 0 })}/month (${billAvgKwh > 0 ? `${billAvgKwh.toLocaleString('en', { maximumFractionDigits: 0 })} kWh/month` : '—'}), requiring a x${requiredMultiplierMid.toFixed(2)} scale factor, indicating the measured feeder coverage ratio.`
-                            : `Analysis: This dataset yields ${monthlyKwh.toFixed(0)} kWh/month and advanced bill ≈ ฿${monthlyBillAdvanced.toLocaleString('en', { maximumFractionDigits: 0 })}/month (below the actual 700k–1M range). This indicates partial-feeder coverage; scaling by about x${requiredMultiplierMin.toFixed(2)}–x${requiredMultiplierMax.toFixed(2)} aligns with actual bills.`)}
+                        ? (hasBillData && historicalBillMid !== null && requiredMultiplierMid !== null
+                            ? `คำอธิบายผล: จากข้อมูลโหลดนี้ ระบบคำนวณได้ ${monthlyKwh.toFixed(0)} kWh/เดือน (โมเดล ≈ ฿${monthlyBillAdvanced.toLocaleString('en', { maximumFractionDigits: 0 })}/เดือน). บิลจริงของลูกค้ารายเดียวกันจาก Power Calculator คือ ฿${historicalBillMid!.toLocaleString('en', { maximumFractionDigits: 0 })}/เดือน (${billAvgKwh > 0 ? `${billAvgKwh.toLocaleString('en', { maximumFractionDigits: 0 })} kWh/เดือน` : '—'}) ต้องสเกล x${requiredMultiplierMid!.toFixed(2)} เพื่อให้สอดคล้องกัน ซึ่งบ่งชี้ถึงสัดส่วน feeder ที่วัดได้.`
+                            : `คำอธิบายผล: จากข้อมูลโหลดนี้ ระบบคำนวณได้ ${monthlyKwh.toFixed(0)} kWh/เดือน และค่าไฟแบบละเอียด ≈ ฿${monthlyBillAdvanced.toLocaleString('en', { maximumFractionDigits: 0 })}/เดือน แต่ยังไม่พบบิลของลูกค้ารายเดียวกันในฐานข้อมูล จึงยังไม่ทำการคาลิเบรตหรือเทียบ coverage ข้ามลูกค้า.`)
+                        : (hasBillData && historicalBillMid !== null && requiredMultiplierMid !== null
+                            ? `Analysis: This dataset yields ${monthlyKwh.toFixed(0)} kWh/month (model ≈ ฿${monthlyBillAdvanced.toLocaleString('en', { maximumFractionDigits: 0 })}/month). Same-customer actual bill from Power Calculator is ฿${historicalBillMid!.toLocaleString('en', { maximumFractionDigits: 0 })}/month (${billAvgKwh > 0 ? `${billAvgKwh.toLocaleString('en', { maximumFractionDigits: 0 })} kWh/month` : '—'}), requiring a x${requiredMultiplierMid!.toFixed(2)} scale factor, indicating measured feeder coverage ratio.`
+                            : `Analysis: This dataset yields ${monthlyKwh.toFixed(0)} kWh/month and advanced bill ≈ ฿${monthlyBillAdvanced.toLocaleString('en', { maximumFractionDigits: 0 })}/month, but no same-customer bill was found in database, so cross-customer calibration/coverage estimation is intentionally disabled.`)}
                     </div>
                   </div>
                 );
