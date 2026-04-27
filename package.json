@@ -48,15 +48,7 @@
     "doc": "docs",
     "lib": "lib"
   },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/ksave0101-maker/K.git"
-  },
   "keywords": [],
   "author": "",
-  "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/ksave0101-maker/K/issues"
-  },
-  "homepage": "https://github.com/ksave0101-maker/K#readme"
+  "license": "ISC"
 }

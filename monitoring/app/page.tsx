@@ -225,7 +225,7 @@ export default function HomePage() {
 								{t.heroTagline[lang]}
 							</p>
 							<div className="d-flex gap-3 justify-content-center flex-wrap">
-								<a href="https://k-energy.ngrok.app/main-login" className="btn-custom-primary">
+								<a href="https://unconsumptive-nonexcitably-bobbye.ngrok-free.dev/main-login" className="btn-custom-primary">
 									{t.loginBtn[lang]}
 								</a>
 								<a href="#products" className="btn-custom-secondary">
