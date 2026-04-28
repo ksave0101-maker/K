@@ -32,6 +32,7 @@ interface AnalysisData {
   recommendation: string;
   notes: string;
   recommendedProduct?: string;
+  mainBreakerAmps?: number;
   // Engineer approval
   engineerName: string;
   engineerLicense: string;
@@ -922,6 +923,7 @@ export default function ThailandPreInstallationAnalysis() {
     recommendation: 'Large current difference between L3 and L2 phases. UPS system inspection and load redistribution required.',
     notes: 'Harmonics and phase imbalance due to UPS system, review after improvement',
     recommendedProduct: 'KSAVER 150KVA',
+    mainBreakerAmps: 0,
     engineerName: '',
     engineerLicense: '',
     approvalStatus: 'Pending',
@@ -2455,6 +2457,32 @@ export default function ThailandPreInstallationAnalysis() {
                     onChange={(e) => handleInputChange('thd', e.target.value)}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                   />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    {lang === 'th' ? 'ขนาดเบรคเกอร์หลักเดิม (A)' : 'Existing Main Breaker Size (A)'}
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    placeholder={lang === 'th' ? 'เช่น 400' : 'e.g. 400'}
+                    value={formData.mainBreakerAmps || ''}
+                    onChange={(e) => handleInputChange('mainBreakerAmps', e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                  {formData.mainBreakerAmps && formData.mainBreakerAmps > 0 && (() => {
+                    const v = parseFloat(formData.voltage) || 380;
+                    const breakerKva = Math.round(Math.sqrt(3) * v * formData.mainBreakerAmps / 1000 * 10) / 10;
+                    return (
+                      <p className="text-xs text-gray-500 mt-1">
+                        {lang === 'th' ? `≈ ${breakerKva.toFixed(1)} kVA (√3 × ${v}V × ${formData.mainBreakerAmps}A)` : `≈ ${breakerKva.toFixed(1)} kVA (√3 × ${v}V × ${formData.mainBreakerAmps}A)`}
+                      </p>
+                    );
+                  })()}
                 </div>
               </div>
             </div>
@@ -4214,7 +4242,22 @@ export default function ThailandPreInstallationAnalysis() {
                 );
                 const pqGrade = pqScore >= 85 ? 'A' : pqScore >= 70 ? 'B' : pqScore >= 55 ? 'C' : 'D';
                 const pqColorClass = pqScore >= 85 ? 'green' : pqScore >= 70 ? 'blue' : pqScore >= 55 ? 'yellow' : 'red';
-                const ksaverKva = Math.ceil(powerPeakDemand * 1.25 / 10) * 10;
+                const ksaverKva_demand = Math.ceil(powerPeakDemand * 1.25 / 10) * 10;
+                const breakerAmps9 = formData.mainBreakerAmps || 0;
+                const voltageNum9 = parseFloat(formData.voltage) || 380;
+                const ksaverKva_breaker = breakerAmps9 > 0 ? Math.ceil(Math.sqrt(3) * voltageNum9 * breakerAmps9 / 1000 / 10) * 10 : 0;
+                const ksaverKva = Math.max(ksaverKva_demand, ksaverKva_breaker);
+                const getKsaverModel = (kva: number) => {
+                  if (kva <= 50) return 'KSAVER 50KVA';
+                  if (kva <= 75) return 'KSAVER 75KVA';
+                  if (kva <= 100) return 'KSAVER 100KVA';
+                  if (kva <= 150) return 'KSAVER 150KVA';
+                  if (kva <= 200) return 'KSAVER 200KVA';
+                  if (kva <= 250) return 'KSAVER 250KVA';
+                  if (kva <= 300) return 'KSAVER 300KVA';
+                  return `KSAVER Custom ≥${kva}KVA`;
+                };
+                const autoKsaverModel = ksaverKva > 0 ? getKsaverModel(ksaverKva) : '';
                 return (
                   <div className="space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -4236,7 +4279,12 @@ export default function ThailandPreInstallationAnalysis() {
                       <div className="bg-cyan-50 rounded-lg p-4 border border-cyan-200">
                         <p className="text-xs text-cyan-600 mb-1">{lang === 'th' ? 'แนะนำขนาดอุปกรณ์' : 'Recommended Equipment'}</p>
                         <p className="text-2xl font-bold text-cyan-800">{ksaverKva > 0 ? `${ksaverKva} kVA` : '—'}</p>
-                        <p className="text-xs text-cyan-500 mt-1">{lang === 'th' ? 'KSAVER ที่แนะนำ (Peak × 1.25)' : 'Recommended KSAVER (Peak × 1.25)'}</p>
+                        <p className="text-xs font-semibold text-cyan-700 mt-0.5">{autoKsaverModel}</p>
+                        <div className="text-xs text-cyan-500 mt-1 space-y-0.5">
+                          <p>📊 {lang === 'th' ? `Peak: ${ksaverKva_demand > 0 ? ksaverKva_demand + ' kVA' : '—'}` : `Peak demand: ${ksaverKva_demand > 0 ? ksaverKva_demand + ' kVA' : '—'}`}</p>
+                          {ksaverKva_breaker > 0 && <p>⚡ {lang === 'th' ? `เบรคเกอร์: ${ksaverKva_breaker} kVA` : `Breaker: ${ksaverKva_breaker} kVA`}</p>}
+                          <p className="font-semibold text-cyan-600">{lang === 'th' ? `→ ใช้ค่าสูงสุด: ${ksaverKva} kVA` : `→ Using max: ${ksaverKva} kVA`}</p>
+                        </div>
                       </div>
                     </div>
                     <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
@@ -4441,7 +4489,22 @@ export default function ThailandPreInstallationAnalysis() {
                 const pf = formData.powerFactor;
                 const imb = metricPeakImbalance;
                 const thd = formData.thd;
-                const ksaverKva = Math.ceil(powerPeakDemand * 1.25 / 10) * 10;
+                const ksaverKva_demand12 = Math.ceil(powerPeakDemand * 1.25 / 10) * 10;
+                const breakerAmps12 = formData.mainBreakerAmps || 0;
+                const voltageNum12 = parseFloat(formData.voltage) || 380;
+                const ksaverKva_breaker12 = breakerAmps12 > 0 ? Math.ceil(Math.sqrt(3) * voltageNum12 * breakerAmps12 / 1000 / 10) * 10 : 0;
+                const ksaverKva = Math.max(ksaverKva_demand12, ksaverKva_breaker12);
+                const getKsaverModel12 = (kva: number) => {
+                  if (kva <= 50) return 'KSAVER 50KVA';
+                  if (kva <= 75) return 'KSAVER 75KVA';
+                  if (kva <= 100) return 'KSAVER 100KVA';
+                  if (kva <= 150) return 'KSAVER 150KVA';
+                  if (kva <= 200) return 'KSAVER 200KVA';
+                  if (kva <= 250) return 'KSAVER 250KVA';
+                  if (kva <= 300) return 'KSAVER 300KVA';
+                  return `KSAVER Custom ≥${kva}KVA`;
+                };
+                const autoKsaverModel12 = ksaverKva > 0 ? getKsaverModel12(ksaverKva) : (formData.recommendedProduct || '');
                 const recs: { priority: 'high' | 'medium' | 'low'; title: string; action: string }[] = [];
                 if (pf < 0.85) recs.push({ priority: 'high', title: lang === 'th' ? '🔋 ติดตั้ง Capacitor Bank ทันที' : '🔋 Install Capacitor Bank Immediately', action: lang === 'th' ? `ติดตั้ง Capacitor Bank ขนาดที่เหมาะสม เพื่อปรับค่า PF จาก ${pf.toFixed(2)} ให้ถึง ≥0.95 ลดค่าไฟและป้องกันค่าปรับ` : `Install appropriately sized capacitor bank to correct PF from ${pf.toFixed(2)} to ≥0.95, reducing costs and avoiding penalties` });
                 else if (pf < 0.95) recs.push({ priority: 'medium', title: lang === 'th' ? '🔋 ปรับปรุง Power Factor' : '🔋 Power Factor Correction', action: lang === 'th' ? `พิจารณาติดตั้ง Capacitor Bank หรือ Active PFC เพื่อปรับค่า PF จาก ${pf.toFixed(2)} ให้ถึงมาตรฐาน ≥0.95` : `Consider capacitor bank or active PFC to bring PF from ${pf.toFixed(2)} to standard ≥0.95` });
@@ -4454,8 +4517,8 @@ export default function ThailandPreInstallationAnalysis() {
                   priority: 'low',
                   title: lang === 'th' ? `💡 แนะนำผลิตภัณฑ์ KSAVER${ksaverKva > 0 ? ` ≥ ${ksaverKva} kVA` : ''}` : `💡 KSAVER Product Recommendation${ksaverKva > 0 ? ` ≥ ${ksaverKva} kVA` : ''}`,
                   action: lang === 'th'
-                    ? `ติดตั้ง KSAVER เพื่อปรับปรุงคุณภาพไฟฟ้า ลดความไม่สมดุล และเพิ่มประสิทธิภาพพลังงาน${formData.recommendedProduct ? ` รุ่นที่แนะนำ: ${formData.recommendedProduct}` : ''}`
-                    : `Install KSAVER to improve power quality, reduce imbalance, and increase overall efficiency${formData.recommendedProduct ? `. Recommended model: ${formData.recommendedProduct}` : ''}`,
+                    ? `ติดตั้ง KSAVER เพื่อปรับปรุงคุณภาพไฟฟ้า ลดความไม่สมดุล และเพิ่มประสิทธิภาพพลังงาน${autoKsaverModel12 ? ` รุ่นที่แนะนำ: ${autoKsaverModel12}` : ''} (Peak demand: ${ksaverKva_demand12} kVA${ksaverKva_breaker12 > 0 ? `, เบรคเกอร์: ${ksaverKva_breaker12} kVA` : ''} → ใช้ค่าสูงสุด)`
+                    : `Install KSAVER to improve power quality, reduce imbalance, and increase overall efficiency${autoKsaverModel12 ? `. Recommended model: ${autoKsaverModel12}` : ''} (Peak demand: ${ksaverKva_demand12} kVA${ksaverKva_breaker12 > 0 ? `, Breaker: ${ksaverKva_breaker12} kVA` : ''} → using max)`,
                 });
                 const priorityStyle: Record<string, string> = {
                   high: 'bg-red-50 border-red-400 border-l-4',
