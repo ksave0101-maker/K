@@ -492,6 +492,13 @@ export default function ThailandPreInstallationAnalysis() {
   const [selectedBillCalcID, setSelectedBillCalcID] = useState<number | null>(null);
   const [showBillsPanel, setShowBillsPanel] = useState(true);
 
+  // ── Power Calculator DB browser (fallback when cusID has no direct match) ──
+  const [showUploadBillForm, setShowUploadBillForm] = useState(false);
+  const [dbPowerCalcBills, setDbPowerCalcBills] = useState<any[]>([]);
+  const [dbPowerCalcBillsLoading, setDbPowerCalcBillsLoading] = useState(false);
+  const [dbPowerCalcBillsError, setDbPowerCalcBillsError] = useState<string | null>(null);
+  const [dbPowerCalcBillsQuery, setDbPowerCalcBillsQuery] = useState('');
+
   // ── Customer DB search (upload section) ──
   type CusResult = { cusID: number; fullname: string; company: string; address: string; phone: string; email: string };
   const [cusQuery, setCusQuery] = useState('');
@@ -973,6 +980,37 @@ export default function ThailandPreInstallationAnalysis() {
       .finally(() => setPowerCalcBillsLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeBatch?.cusID]);
+
+  const openDbBillBrowser = async () => {
+    setShowUploadBillForm(true);
+    setDbPowerCalcBillsLoading(true);
+    setDbPowerCalcBillsError(null);
+    try {
+      const queryHint = activeBatch?.customerName || '';
+      if (!dbPowerCalcBillsQuery && queryHint) setDbPowerCalcBillsQuery(queryHint);
+      const res = await fetch('/api/power-calculations?limit=100');
+      const json = await res.json();
+      if (!res.ok || json?.success === false) {
+        throw new Error(json?.error || 'Failed to load power calculations');
+      }
+      setDbPowerCalcBills(json.rows || []);
+    } catch (err: any) {
+      setDbPowerCalcBills([]);
+      setDbPowerCalcBillsError(err?.message || (lang === 'th' ? 'โหลดข้อมูลบิลไม่สำเร็จ' : 'Failed to load bills'));
+    } finally {
+      setDbPowerCalcBillsLoading(false);
+    }
+  };
+
+  const selectDbBillForCalculation = (bill: any) => {
+    setPowerCalcBills(prev => {
+      const withoutSelected = prev.filter((row: any) => row.calcID !== bill.calcID);
+      return [bill, ...withoutSelected];
+    });
+    setSelectedBillCalcID(bill.calcID);
+    setShowUploadBillForm(false);
+    setShowBillsPanel(true);
+  };
 
   // ── CSV parser for 30-second interval data ──────────────────────────────
   const parseCSVFiles = (files: File[]) => {
@@ -3729,16 +3767,132 @@ export default function ThailandPreInstallationAnalysis() {
                       {powerCalcBillsLoading ? (
                         <p className="text-sm text-gray-400 text-center py-4">{lang === 'th' ? 'กำลังโหลดบิล...' : 'Loading bills...'}</p>
                       ) : powerCalcBills.length === 0 ? (
-                        <div className="text-center py-4">
-                          <p className="text-sm text-gray-500">{lang === 'th' ? 'ไม่พบบิลค่าไฟใน Power Calculator สำหรับลูกค้านี้' : 'No Power Calculator bills found for this customer.'}</p>
-                          <a
-                            href="/KR-Thailand/Admin-Login/power-calculator"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-block mt-2 text-xs text-blue-600 underline"
-                          >
-                            {lang === 'th' ? '+ สร้างบิลใหม่ใน Power Calculator' : '+ Create new bill in Power Calculator'}
-                          </a>
+                        <div className="py-4">
+                          <div className="text-center mb-3">
+                            <p className="text-sm text-gray-500">{lang === 'th' ? 'ไม่พบบิลค่าไฟใน Power Calculator สำหรับลูกค้านี้' : 'No Power Calculator bills found for this customer.'}</p>
+                            <div className="flex justify-center gap-3 mt-2">
+                              <a
+                                href="/KR-Thailand/Admin-Login/power-calculator"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-block text-xs text-blue-600 underline"
+                              >
+                                {lang === 'th' ? '+ สร้างบิลใหม่ใน Power Calculator' : '+ Create new bill in Power Calculator'}
+                              </a>
+                              <button
+                                onClick={() => {
+                                  if (showUploadBillForm) {
+                                    setShowUploadBillForm(false);
+                                  } else {
+                                    openDbBillBrowser();
+                                  }
+                                }}
+                                className="inline-flex items-center gap-1 text-xs text-emerald-700 font-medium border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 px-3 py-1 rounded-full transition-colors"
+                              >
+                                <Upload className="w-3 h-3" />
+                                {lang === 'th' ? 'อัปโหลดบิลจากฐานข้อมูล' : 'Upload bill from DB'}
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* ── DB bill browser ── */}
+                          {showUploadBillForm && (
+                            <div className="mt-3 border border-emerald-200 rounded-xl bg-emerald-50 p-4 space-y-3">
+                              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+                                <p className="text-xs font-semibold text-emerald-800">
+                                  {lang === 'th'
+                                    ? 'เลือกรายการบิลที่บันทึกไว้ในฐานข้อมูล power_calculations เพื่อนำมาใช้คำนวณ'
+                                    : 'Select a saved bill from the power_calculations database for calculation'}
+                                </p>
+                                <div className="flex items-center gap-2">
+                                  <Search className="w-3.5 h-3.5 text-emerald-700" />
+                                  <input
+                                    type="text"
+                                    value={dbPowerCalcBillsQuery}
+                                    onChange={e => setDbPowerCalcBillsQuery(e.target.value)}
+                                    placeholder={lang === 'th' ? 'ค้นหาเลขที่บิล / ลูกค้า / ชื่อรายการ' : 'Search doc no / customer / title'}
+                                    className="w-full md:w-72 border border-emerald-300 rounded-lg px-3 py-1.5 text-xs bg-white"
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="text-[11px] text-emerald-700 bg-white/70 border border-emerald-200 rounded-lg px-3 py-2">
+                                {lang === 'th'
+                                  ? 'ปุ่มนี้จะดึงข้อมูลจากตาราง power_calculations โดยตรง แล้วให้เลือกบิลที่ต้องการนำมาแสดงในส่วนคำนวณ'
+                                  : 'This button loads records directly from the power_calculations table and lets you choose one to display in the calculation section.'}
+                              </div>
+
+                              {dbPowerCalcBillsLoading ? (
+                                <p className="text-xs text-gray-500 py-3 text-center">{lang === 'th' ? 'กำลังโหลดรายการบิลจากฐานข้อมูล...' : 'Loading bills from database...'}</p>
+                              ) : dbPowerCalcBillsError ? (
+                                <p className="text-xs text-red-600 py-2">{dbPowerCalcBillsError}</p>
+                              ) : (() => {
+                                const query = dbPowerCalcBillsQuery.trim().toLowerCase();
+                                const rows = dbPowerCalcBills.filter((bill: any) => {
+                                  if (!query) return true;
+                                  const customerText = String(bill.customerName || bill.customer_name || '').toLowerCase();
+                                  const titleText = String(bill.title || '').toLowerCase();
+                                  const docText = String(bill.power_calcuNo || bill.calcID || '').toLowerCase();
+                                  const cusIdText = String(bill.cusID || '').toLowerCase();
+                                  return customerText.includes(query)
+                                    || titleText.includes(query)
+                                    || docText.includes(query)
+                                    || cusIdText.includes(query);
+                                });
+
+                                return rows.length === 0 ? (
+                                  <p className="text-xs text-gray-500 py-3 text-center">{lang === 'th' ? 'ไม่พบบิลที่ตรงกับเงื่อนไขค้นหา' : 'No matching bills found'}</p>
+                                ) : (
+                                  <div className="overflow-x-auto border border-emerald-200 rounded-lg bg-white">
+                                    <table className="w-full text-xs border-collapse">
+                                      <thead>
+                                        <tr className="bg-emerald-50 text-gray-600">
+                                          <th className="px-2 py-2 text-left border-b border-emerald-100">{lang === 'th' ? 'เลขที่บิล' : 'Doc No.'}</th>
+                                          <th className="px-2 py-2 text-left border-b border-emerald-100">{lang === 'th' ? 'ลูกค้า' : 'Customer'}</th>
+                                          <th className="px-2 py-2 text-left border-b border-emerald-100">{lang === 'th' ? 'วันที่' : 'Date'}</th>
+                                          <th className="px-2 py-2 text-right border-b border-emerald-100">{lang === 'th' ? 'kWh/เดือน' : 'kWh/mo'}</th>
+                                          <th className="px-2 py-2 text-right border-b border-emerald-100">{lang === 'th' ? 'ค่าไฟ/เดือน' : 'Bill/mo'}</th>
+                                          <th className="px-2 py-2 text-center border-b border-emerald-100">{lang === 'th' ? 'นำไปใช้' : 'Use'}</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {rows.map((bill: any) => (
+                                          <tr key={bill.calcID} className="hover:bg-emerald-50/40 transition-colors">
+                                            <td className="px-2 py-2 border-b border-gray-100 font-mono text-emerald-700">{bill.power_calcuNo || `#${bill.calcID}`}</td>
+                                            <td className="px-2 py-2 border-b border-gray-100 text-gray-700 max-w-[220px] truncate" title={bill.customerName || bill.customer_name || bill.title || '-'}>
+                                              {bill.customerName || bill.customer_name || bill.title || '-'}
+                                            </td>
+                                            <td className="px-2 py-2 border-b border-gray-100 text-gray-500">{bill.created_at ? String(bill.created_at).slice(0, 10) : '—'}</td>
+                                            <td className="px-2 py-2 border-b border-gray-100 text-right">{bill.average_monthly_kwh ? Number(bill.average_monthly_kwh).toLocaleString('en', { maximumFractionDigits: 0 }) : '—'}</td>
+                                            <td className="px-2 py-2 border-b border-gray-100 text-right font-semibold text-green-700">{bill.average_monthly_cost ? `฿${Number(bill.average_monthly_cost).toLocaleString('en', { maximumFractionDigits: 0 })}` : '—'}</td>
+                                            <td className="px-2 py-2 border-b border-gray-100 text-center">
+                                              <button
+                                                onClick={() => selectDbBillForCalculation(bill)}
+                                                className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-[11px] font-medium"
+                                              >
+                                                <Eye className="w-3 h-3" />
+                                                {lang === 'th' ? 'ใช้คำนวณ' : 'Use'}
+                                              </button>
+                                            </td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                );
+                              })()}
+
+                              <div className="flex justify-end">
+                                <button
+                                  type="button"
+                                  onClick={() => setShowUploadBillForm(false)}
+                                  className="px-3 py-1.5 text-xs text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
+                                >
+                                  {lang === 'th' ? 'ปิด' : 'Close'}
+                                </button>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       ) : (
                         <>
