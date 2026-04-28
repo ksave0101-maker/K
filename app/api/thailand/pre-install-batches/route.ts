@@ -252,12 +252,12 @@ export async function POST(req: NextRequest) {
   try {
     await conn.beginTransaction()
     for (const b of batches) {
-      const batchColumns = ['batchId', 'customerName', 'location', 'createdAt']
-      const batchValues = [b.batchId, b.customerName || '', b.location || '', b.createdAt || null]
+      const batchColumns = ['batchId', 'cusID', 'customerName', 'location', 'createdAt']
+      const batchValues = [b.batchId, b.cusID ?? null, b.customerName || '', b.location || '', b.createdAt || null]
       await conn.execute(
         `INSERT INTO th_pre_install_batches (${batchColumns.join(', ')})
          VALUES (${batchColumns.map(() => '?').join(', ')})
-         ON DUPLICATE KEY UPDATE customerName=VALUES(customerName), location=VALUES(location), createdAt=VALUES(createdAt)`,
+         ON DUPLICATE KEY UPDATE cusID=COALESCE(VALUES(cusID), cusID), customerName=VALUES(customerName), location=VALUES(location), createdAt=VALUES(createdAt)`,
         batchValues
       )
       // Replace records for this batch

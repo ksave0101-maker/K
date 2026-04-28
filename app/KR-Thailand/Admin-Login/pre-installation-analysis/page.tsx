@@ -327,6 +327,7 @@ export default function ThailandPreInstallationAnalysis() {
       const customerName = uploadCustomerName || uploadCusSelected?.fullname || uploadCusSelected?.company || `Meter ${meter}`;
       const batch: CurrentBatch = {
         batchId: newBatchId,
+        cusID: uploadCusSelected?.cusID ?? null,
         customerName: `${customerName} - Meter ${meter}`,
         location: uploadCustomerLocation || '',
         createdAt: getCurrentDateTime(),
@@ -985,10 +986,14 @@ export default function ThailandPreInstallationAnalysis() {
     setShowUploadBillForm(true);
     setDbPowerCalcBillsLoading(true);
     setDbPowerCalcBillsError(null);
+    const queryHint = (activeBatch?.customerName || '').replace(/\s*-\s*Meter\s+\d+\s*$/i, '').trim();
+    setDbPowerCalcBillsQuery(queryHint);
     try {
-      const queryHint = activeBatch?.customerName || '';
-      if (!dbPowerCalcBillsQuery && queryHint) setDbPowerCalcBillsQuery(queryHint);
-      const res = await fetch('/api/power-calculations?limit=100');
+      const cusID = activeBatch?.cusID;
+      const url = cusID
+        ? `/api/power-calculations?cusID=${cusID}&limit=100`
+        : `/api/power-calculations?limit=100`;
+      const res = await fetch(url);
       const json = await res.json();
       if (!res.ok || json?.success === false) {
         throw new Error(json?.error || 'Failed to load power calculations');
