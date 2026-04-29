@@ -83,6 +83,23 @@ function PrintContent() {
   }, [id, batchId])
 
   useEffect(() => {
+    // Force scroll on body/html overridden by globals.css height:100%
+    const html = document.documentElement
+    const body = document.body
+    const prev = { hH: html.style.height, hO: html.style.overflowY, bH: body.style.height, bO: body.style.overflowY }
+    html.style.height = 'auto'
+    html.style.overflowY = 'auto'
+    body.style.height = 'auto'
+    body.style.overflowY = 'auto'
+    return () => {
+      html.style.height = prev.hH
+      html.style.overflowY = prev.hO
+      body.style.height = prev.bH
+      body.style.overflowY = prev.bO
+    }
+  }, [])
+
+  useEffect(() => {
     if (data && (auto === '1' || auto === 'true')) setTimeout(() => { try { window.print() } catch {} }, 500)
   }, [data, auto])
 
@@ -275,7 +292,7 @@ function PrintContent() {
       <style>{`
         @page { size: A4 portrait; margin: 1.2cm 1.8cm 1.2cm 1.8cm; }
         @media print { .no-print{display:none!important} body{margin:0;padding:0} .a4{box-shadow:none!important} .pgbrk{page-break-before:always} }
-        @media screen { body{background:#ddd} }
+        @media screen { html,body{height:auto!important;overflow-y:auto!important;background:#ddd} }
         *{box-sizing:border-box}
         body{font-family:'Sarabun','Segoe UI',sans-serif;font-size:9.5pt;color:#333}
         .a4{width:100%;max-width:195mm;margin:6mm auto;padding:8mm 10mm;background:white;box-shadow:0 2px 8px rgba(0,0,0,.15)}
