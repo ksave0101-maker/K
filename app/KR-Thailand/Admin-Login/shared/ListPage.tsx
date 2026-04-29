@@ -161,6 +161,44 @@ export default function ListPage({ title, apiPath, createPath, columns, link, pr
     if (r === '+ create' || r === 'create') return T('+ Create', '+ สร้างใหม่')
     return raw
   }
+
+  const formatPowerCalcuNo = (row: any, rowIndex?: number) => {
+    const raw = row?.power_calcuNo
+    const rawText = typeof raw === 'string' ? raw.trim() : (raw == null ? '' : String(raw))
+
+    // Keep valid already-formatted value
+    if (/^PWC\s*\d{13}$/i.test(rawText)) {
+      return rawText.startsWith('PWC ') ? rawText : rawText.replace(/^PWC\s*/i, 'PWC ')
+    }
+
+    let yyyymmdd = ''
+    try {
+      const d = row?.created_at ? new Date(row.created_at) : null
+      if (d && !isNaN(d.getTime())) {
+        yyyymmdd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
+      }
+    } catch (_) {}
+
+    if (!yyyymmdd) {
+      const d = new Date()
+      yyyymmdd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
+    }
+
+    // Prefer small numeric raw values, otherwise fallback to row index in list
+    let seq = 0
+    const rawNum = Number(rawText)
+    if (rawText && !isNaN(rawNum) && rawNum > 0 && rawNum <= 99999) {
+      seq = Math.trunc(rawNum)
+    } else if (typeof rowIndex === 'number' && rowIndex >= 0) {
+      seq = rowIndex + 1
+    } else {
+      const calcNum = Number(row?.calcID)
+      seq = !isNaN(calcNum) && calcNum > 0 && calcNum <= 99999 ? Math.trunc(calcNum) : 1
+    }
+
+    return `PWC ${yyyymmdd}${String(seq).padStart(5, '0')}`
+  }
+
   const [rows, setRows] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -422,6 +460,11 @@ export default function ListPage({ title, apiPath, createPath, columns, link, pr
                 ${columns.map(c => {
                   const v = r?.[c.key]
 
+                  // Power calculator document number display
+                  if (apiPath && apiPath.includes('/power-calculations') && c.key === 'power_calcuNo') {
+                    return `<td>${formatPowerCalcuNo(r)}</td>`
+                  }
+
                   // Handle status with badge
                   if (c.key === 'status') {
                     const badgeMap: Record<string, { label: string; color: string; bg: string }> = {
@@ -608,6 +651,11 @@ export default function ListPage({ title, apiPath, createPath, columns, link, pr
                         return <td key={c.key}>{idx + 1}</td>
                       }
                       const v = r?.[c.key]
+
+                      if (apiPath && apiPath.includes('/power-calculations') && c.key === 'power_calcuNo') {
+                        return <td key={c.key}>{formatPowerCalcuNo(r, idx)}</td>
+                      }
+
                       if (link && link.columnKey === c.key) {
                         const param = link.paramName || c.key
                         // For receipts, check signatures before opening print view
