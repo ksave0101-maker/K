@@ -1131,6 +1131,7 @@ export default function ThailandPreInstallationAnalysis() {
         body: JSON.stringify(formData),
       });
       if (!res.ok) throw new Error('save failed');
+      const savedId = formData.id
       setAnalyses(prev => {
         const exists = prev.find(a => a.id === formData.id);
         return exists ? prev.map(a => a.id === formData.id ? formData : a) : [...prev, formData];
@@ -1158,7 +1159,14 @@ export default function ThailandPreInstallationAnalysis() {
         approvalDate: getCurrentDateTime(),
         approverName: '',
       });
-      alert(lang === 'th' ? 'บันทึกข้อมูลเรียบร้อยแล้ว' : 'Data saved successfully');
+      const batchParam = analysisBatchId ? `&batchId=${encodeURIComponent(analysisBatchId)}` : ''
+      const printUrl = `/KR-Thailand/Admin-Login/pre-installation-analysis/print?id=${encodeURIComponent(savedId)}${batchParam}&autoPrint=1&lang=${lang}`
+      const confirmed = window.confirm(
+        lang === 'th'
+          ? 'บันทึกข้อมูลเรียบร้อยแล้ว\nต้องการเปิดหน้าพิมพ์รายงานหรือไม่?'
+          : 'Data saved successfully.\nOpen print report?'
+      )
+      if (confirmed) window.open(printUrl, '_blank')
     } catch {
       alert(lang === 'th' ? 'เกิดข้อผิดพลาดในการบันทึก' : 'Failed to save data');
     }

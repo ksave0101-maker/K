@@ -6,7 +6,7 @@ import { useSearchParams } from 'next/navigation'
 
 function PreInstallationPrintPageContent() {
   const searchParams = useSearchParams()
-  const formID = searchParams?.get('formID') || searchParams?.get('id') || ''
+  const formID = searchParams?.get('formID') || searchParams?.get('preInstallID') || searchParams?.get('id') || ''
   const auto = searchParams?.get('autoPrint')
   const [form, setForm] = useState<any | null>(null)
   const [loggedUser, setLoggedUser] = useState<string | null>(null)

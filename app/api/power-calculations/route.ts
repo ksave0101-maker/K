@@ -138,8 +138,6 @@ export async function GET(request: NextRequest) {
     const calcID = searchParams.get('calcID') || searchParams.get('id')
     const cusID = searchParams.get('cusID')
 
-    // ตรวจสอบภาษา
-    const lang = searchParams.get('lang') || 'th';
     let query = `
       SELECT
         p.calcID,
@@ -228,7 +226,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (cusID) {
-      query += ` AND cusID = ?`
+      query += ` AND p.cusID = ?`
       params.push(cusID)
     }
 
