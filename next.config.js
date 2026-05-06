@@ -1,6 +1,4 @@
 /** @type {import('next').NextConfig} */
-const isProd = process.env.NODE_ENV === 'production'
-
 const nextConfig = {
   // output: 'standalone', // Disabled - causing CSS 404 issues
   compress: true,
@@ -36,12 +34,6 @@ const nextConfig = {
   },
   async redirects() {
     return [
-      // Redirect root to ngrok main-login
-      {
-        source: '/',
-        destination: 'https://unconsumptive-nonexcitably-bobbye.ngrok-free.dev/main-login',
-        permanent: false,
-      },
       // Canonical URL for Thailand branch document system
       {
         source: '/KR-Thailand/Admin-Login/documents/:path*',
@@ -51,7 +43,7 @@ const nextConfig = {
     ]
   },
   async headers() {
-    const headers = [
+    return [
       {
         // HTML pages - never cache, always revalidate
         source: '/((?!_next/static|_next/image|favicon.ico).*)',
@@ -61,28 +53,14 @@ const nextConfig = {
           { key: 'Pragma', value: 'no-cache' },
         ],
       },
-    ]
-
-    if (isProd) {
-      headers.push({
-        // Static assets in production - cache forever (hashed filenames)
+      {
+        // Static assets - cache forever (they have hashed filenames)
         source: '/_next/static/(.*)',
         headers: [
           { key: 'Cache-Control', value: 'public, max-age=31536000, immutable' },
         ],
-      })
-    } else {
-      headers.push({
-        // Development chunks can be regenerated; avoid stale-client cache mismatch
-        source: '/_next/static/(.*)',
-        headers: [
-          { key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' },
-          { key: 'Pragma', value: 'no-cache' },
-        ],
-      })
-    }
-
-    return headers
+      },
+    ]
   },
 }
 
