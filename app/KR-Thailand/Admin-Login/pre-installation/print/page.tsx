@@ -47,6 +47,16 @@ function PreInstallationPrintPageContent() {
   }, [formID])
 
   useEffect(() => {
+    const html = document.documentElement
+    const body = document.body
+    html.style.height = 'auto'
+    html.style.overflowY = 'auto'
+    body.style.height = 'auto'
+    body.style.overflowY = 'auto'
+    return () => { html.style.height = ''; html.style.overflowY = ''; body.style.height = ''; body.style.overflowY = '' }
+  }, [])
+
+  useEffect(() => {
     try {
       const raw = localStorage.getItem('k_system_admin_user')
       if (raw) {
@@ -105,7 +115,7 @@ function PreInstallationPrintPageContent() {
           html, body { -ms-overflow-style: none !important; scrollbar-width: none !important; }
           ::-webkit-scrollbar { display: none !important; }
           .a4-page { box-shadow: none !important; } }
-        @media screen { body { background: #e5e5e5; } }
+        @media screen { html,body { height:auto!important; overflow-y:auto!important; background: #e5e5e5; } }
         * { box-sizing: border-box; }
         ::-webkit-scrollbar { display: none; }
         html { -ms-overflow-style: none; scrollbar-width: none; }
