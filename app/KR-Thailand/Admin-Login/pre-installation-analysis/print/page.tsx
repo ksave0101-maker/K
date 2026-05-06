@@ -83,7 +83,30 @@ function PrintContent() {
   }, [id, batchId])
 
   useEffect(() => {
-    if (data && (auto === '1' || auto === 'true')) setTimeout(() => { try { window.print() } catch {} }, 500)
+    if (!data || !(auto === '1' || auto === 'true')) return
+
+    let cancelled = false
+    ;(async () => {
+      try {
+        try {
+          if ((document as any).fonts?.ready) {
+            await (document as any).fonts.ready
+          }
+        } catch {}
+
+        if (cancelled) return
+        // Give browser one more frame to finalize layout before opening print preview
+        requestAnimationFrame(() => {
+          if (cancelled) return
+          setTimeout(() => {
+            if (cancelled) return
+            try { window.print() } catch {}
+          }, 300)
+        })
+      } catch {}
+    })()
+
+    return () => { cancelled = true }
   }, [data, auto])
 
   const metrics = useMemo(() => {
@@ -274,8 +297,71 @@ function PrintContent() {
     <>
       <style>{`
         @page { size: A4 portrait; margin: 1.2cm 1.8cm 1.2cm 1.8cm; }
-        @media print { .no-print{display:none!important} body{margin:0;padding:0} .a4{box-shadow:none!important} .pgbrk{page-break-before:always} }
-        @media screen { body{background:#ddd} }
+        @media print {
+          .no-print{display:none!important}
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            width: auto !important;
+            height: auto !important;
+            overflow: visible !important;
+            background: #fff !important;
+          }
+          .a4{
+            box-shadow:none!important;
+            max-width: none !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: visible !important;
+            break-inside: auto;
+            page-break-inside: auto;
+          }
+          .sec{
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
+          .pgbrk{
+            break-before: page;
+            page-break-before: always;
+          }
+        }
+        @media screen {
+          body{
+            background: radial-gradient(1200px 500px at 10% -10%, #dbeafe 0%, #eff6ff 45%, #eef2ff 100%);
+            margin: 0;
+            padding: 12px;
+          }
+          .a4{
+            max-width: 205mm;
+            border-radius: 14px;
+            border: 1px solid #dbeafe;
+            background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+            box-shadow: 0 20px 48px rgba(30, 58, 95, 0.18), 0 2px 10px rgba(30, 64, 175, 0.12);
+          }
+          .sec{
+            border: 1px solid #dbeafe;
+            background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+            box-shadow: 0 4px 12px rgba(30, 64, 175, 0.06);
+          }
+          .st{
+            background: linear-gradient(90deg, #eff6ff 0%, #ffffff 100%);
+            border-bottom: 1px solid #bfdbfe;
+            border-radius: 4px;
+            padding: 4px 8px;
+            margin: -2px -2px 8px -2px;
+          }
+          .tbl th{
+            background: linear-gradient(180deg, #eff6ff 0%, #e0e7ff 100%);
+            color: #1d4ed8;
+            border-bottom: 2px solid #bfdbfe;
+          }
+          .mbox{
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.75), 0 2px 6px rgba(2,6,23,0.06);
+          }
+          .execbox{
+            box-shadow: 0 10px 24px rgba(30, 64, 175, 0.25);
+          }
+        }
         *{box-sizing:border-box}
         body{font-family:'Sarabun','Segoe UI',sans-serif;font-size:9.5pt;color:#333}
         .a4{width:100%;max-width:195mm;margin:6mm auto;padding:8mm 10mm;background:white;box-shadow:0 2px 8px rgba(0,0,0,.15)}
@@ -318,10 +404,10 @@ function PrintContent() {
       `}</style>
 
       {/* Controls */}
-      <div className="no-print" style={{textAlign:'center',padding:'8px',background:'#f5f5f5',borderBottom:'1px solid #ddd',marginBottom:6}}>
+      <div className="no-print" style={{textAlign:'center',padding:'10px',background:'linear-gradient(90deg,#1e3a8a,#2563eb)',borderBottom:'1px solid #1e40af',marginBottom:8,boxShadow:'0 6px 16px rgba(37,99,235,.25)'}}>
         {(['th','en'] as const).map(l => (
           <button key={l} onClick={() => { setLang(l); updateLang(l) }}
-            style={{marginRight:6,padding:'4px 12px',fontSize:11,borderRadius:20,border:lang===l?'2px solid #e67e22':'1px solid #ccc',background:lang===l?'#fff5eb':'#fff',cursor:'pointer',fontWeight:lang===l?600:400}}>
+            style={{marginRight:6,padding:'4px 12px',fontSize:11,borderRadius:20,border:lang===l?'2px solid #f59e0b':'1px solid #bfdbfe',background:lang===l?'#fff7ed':'#fff',cursor:'pointer',fontWeight:lang===l?700:500,color:'#1e3a8a'}}>
             {l==='th'?'ไทย':'English'}
           </button>
         ))}
