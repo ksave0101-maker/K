@@ -24,15 +24,11 @@ export async function GET(req: NextRequest) {
     const branchRaw = searchParams.get('branch') || 'thailand'
     const branch = normalizeBranch(branchRaw)
 
-    // Prefer users with Branch-Manager role/name and matching site.
+    // Prefer users with Branch-Manager role and matching site.
     let rows = await query(
       `SELECT userId, name, userName, site, typeID
          FROM user_list
-        WHERE (
-          typeID IN (6, 19)
-          OR LOWER(TRIM(COALESCE(userName, ''))) = 'branch-manager'
-          OR LOWER(TRIM(COALESCE(name, ''))) LIKE '%branch manager%'
-        )
+        WHERE typeID IN (6, 19)
           AND LOWER(COALESCE(site, '')) LIKE ?
         ORDER BY userId ASC
         LIMIT 1`,
@@ -45,8 +41,6 @@ export async function GET(req: NextRequest) {
         `SELECT userId, name, userName, site, typeID
            FROM user_list
           WHERE typeID IN (6, 19)
-             OR LOWER(TRIM(COALESCE(userName, ''))) = 'branch-manager'
-             OR LOWER(TRIM(COALESCE(name, ''))) LIKE '%branch manager%'
           ORDER BY userId ASC
           LIMIT 1`
       ) as UserRow[]
