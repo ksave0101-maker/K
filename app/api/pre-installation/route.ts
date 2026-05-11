@@ -89,10 +89,7 @@ export async function POST(request: NextRequest) {
       orderID,
       cusID,
       site_address,
-      customer_name,
       site_address: siteAddr,
-      contact_phone,
-      inspection_date,
       checklist,
       photos,
       notes,
@@ -100,14 +97,21 @@ export async function POST(request: NextRequest) {
       created_by
     } = body
 
-    // Generate Pre-installNo: PRE-INSyyyymmdd-00001
-    const [maxResult] = await pool.query(
-      'SELECT MAX(formID) as maxID FROM pre_installation_forms'
-    )
-    const nextID = ((maxResult as any)[0].maxID || 0) + 1
+    // Generate Pre-installNo using document_counters for atomic, sequential, unique numbering
     const now = new Date()
-    const yyyymmdd = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}`
-    const preInstallNo = `PRE-INS${yyyymmdd}-${String(nextID).padStart(5, '0')}`
+    const yearMonth = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`
+    await pool.query(
+      `INSERT INTO document_counters (prefix, year_month, counter)
+       VALUES ('PRE', ?, 1)
+       ON DUPLICATE KEY UPDATE counter = counter + 1`,
+      [yearMonth]
+    )
+    const [counterRows] = await pool.query(
+      `SELECT counter FROM document_counters WHERE prefix = 'PRE' AND year_month = ?`,
+      [yearMonth]
+    )
+    const counter = (counterRows as any)[0].counter
+    const preInstallNo = `PRE-${yearMonth}-${String(counter).padStart(5, '0')}`
 
     const query = `
       INSERT INTO pre_installation_forms (
