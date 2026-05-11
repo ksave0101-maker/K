@@ -120,6 +120,11 @@ function PreInstallationFormContent() {
   const [siteAddress, setSiteAddress] = useState('')
   const [contactPhone, setContactPhone] = useState('')
   const [inspectionDate, setInspectionDate] = useState(new Date().toISOString().split('T')[0])
+  const [preInstallNo, setPreInstallNo] = useState(() => {
+    const d = new Date()
+    const ymd = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`
+    return `PRE-INS${ymd}-?????`
+  })
 
   useEffect(() => {
     try {
@@ -156,6 +161,8 @@ function PreInstallationFormContent() {
         setCustomerName(form.customer_name || '')
         setCustomerSearch(form.customer_name || '')
         setSiteAddress(form.site_address || '')
+        if (form.pre_install_no || form['Pre-installNo'])
+          setPreInstallNo(form.pre_install_no || form['Pre-installNo'])
 
         let cl: any = {}
         try { cl = typeof form.checklist === 'string' ? JSON.parse(form.checklist) : (form.checklist || {}) } catch {}
@@ -350,6 +357,26 @@ function PreInstallationFormContent() {
         </div>
 
         <div className={styles.cardBody}>
+          {/* Document Number Banner */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, padding: '10px 16px', background: 'linear-gradient(135deg,#1e3a5f,#1e64af)', borderRadius: 8 }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+            </svg>
+            <div>
+              <div style={{ fontSize: 11, color: '#93c5fd', fontWeight: 500 }}>
+                {L('Document No.', 'เลขที่เอกสาร')}
+              </div>
+              <div style={{ fontSize: 16, fontWeight: 800, color: '#fff', letterSpacing: 1 }}>
+                {preInstallNo}
+              </div>
+            </div>
+            {!editFormID && (
+              <div style={{ marginLeft: 'auto', fontSize: 11, color: '#bfdbfe', fontStyle: 'italic' }}>
+                {L('Auto-assigned on save', 'ระบบจะออกเลขให้อัตโนมัติเมื่อบันทึก')}
+              </div>
+            )}
+          </div>
+
           {/* Customer Info */}
           <div style={{ marginBottom: 20 }}>
             <div className={styles.formRow}>

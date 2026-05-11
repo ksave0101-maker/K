@@ -100,12 +100,14 @@ export async function POST(request: NextRequest) {
       created_by
     } = body
 
-    // Generate Pre-installNo
+    // Generate Pre-installNo: PRE-INSyyyymmdd-00001
     const [maxResult] = await pool.query(
       'SELECT MAX(formID) as maxID FROM pre_installation_forms'
     )
     const nextID = ((maxResult as any)[0].maxID || 0) + 1
-    const preInstallNo = `PRE-${String(nextID).padStart(6, '0')}`
+    const now = new Date()
+    const yyyymmdd = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}`
+    const preInstallNo = `PRE-INS${yyyymmdd}-${String(nextID).padStart(5, '0')}`
 
     const query = `
       INSERT INTO pre_installation_forms (
