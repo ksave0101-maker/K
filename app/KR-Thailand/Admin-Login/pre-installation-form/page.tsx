@@ -1,11 +1,14 @@
 "use client"
 
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import AdminLayout from '../components/AdminLayout'
 import styles from '../admin-theme.module.css'
 
-export default function PreInstallationFormPage() {
+function PreInstallationFormContent() {
+  const searchParams = useSearchParams()
+  const editFormID = searchParams?.get('formID') || ''
   const [customerSearch, setCustomerSearch] = useState('')
   const [customerOptions, setCustomerOptions] = useState<any[]>([])
   const [customerLoading, setCustomerLoading] = useState(false)
@@ -140,44 +143,92 @@ export default function PreInstallationFormPage() {
 
   const L = (en: string, th: string) => (mounted ? locale : 'en') === 'th' ? th : en
 
+  // Load existing form data when editing
+  useEffect(() => {
+    if (!editFormID) return
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/pre-installation?id=${encodeURIComponent(editFormID)}`)
+        const j = await res.json()
+        if (!res.ok || !j?.success || !j.form) return
+        const form = j.form
+
+        setCustomerName(form.customer_name || '')
+        setCustomerSearch(form.customer_name || '')
+        setSiteAddress(form.site_address || '')
+
+        let cl: any = {}
+        try { cl = typeof form.checklist === 'string' ? JSON.parse(form.checklist) : (form.checklist || {}) } catch {}
+
+        if (cl.siteClassification) setSiteClassification(cl.siteClassification)
+        if (cl.basicInfo?.mainBreaker) setMainBreaker(cl.basicInfo.mainBreaker)
+        if (cl.basicInfo?.peakPower) setPeakPower(cl.basicInfo.peakPower)
+        if (cl.basicInfo?.phaseType) setPhaseType(cl.basicInfo.phaseType)
+        if (cl.basicInfo?.faucetMethod !== undefined) setFaucetMethod(cl.basicInfo.faucetMethod)
+        if (cl.basicInfo?.transformerCapacity !== undefined) setTransformerCapacity(cl.basicInfo.transformerCapacity)
+        if (cl.basicInfo?.cableSize !== undefined) setCableSize(cl.basicInfo.cableSize)
+        if (cl.basicInfo?.installationLocation !== undefined) setInstallationLocation(cl.basicInfo.installationLocation)
+        if (cl.phaseData) setPhaseData(cl.phaseData)
+        if (cl.harmonicAnalysis) setHarmonicAnalysis(cl.harmonicAnalysis)
+        if (cl.voltageDrop !== undefined) setVoltageDrop(cl.voltageDrop)
+        if (cl.conditions) setConditions(cl.conditions)
+        if (cl.loadInspection) setLoadInspection(cl.loadInspection)
+        if (cl.loadProfile) setLoadProfile(cl.loadProfile)
+        if (cl.specialNotes) setSpecialNotes(cl.specialNotes)
+        if (cl.economic) setEconomic(cl.economic)
+        if (cl.equipmentSizing) setEquipmentSizing(cl.equipmentSizing)
+      } catch (err) {
+        console.error('Failed to load form for edit:', err)
+      }
+    })()
+  }, [editFormID])
+
   const handleSave = async () => {
     setSaving(true)
     try {
-      const payload = {
-        customer_name: customerName,
-        site_address: siteAddress,
-        contact_phone: contactPhone,
-        inspection_date: inspectionDate,
-        checklist: {
-          siteClassification,
-          basicInfo: { mainBreaker, peakPower, phaseType, faucetMethod, transformerCapacity, cableSize, installationLocation },
-          phaseData,
-          harmonicAnalysis,
-          voltageDrop,
-          conditions,
-          loadInspection,
-          loadProfile,
-          specialNotes,
-          economic,
-          equipmentSizing
-        },
-        notes: '',
-        photos: [],
-        status: 'pending',
-        created_by: (typeof window !== 'undefined' && localStorage.getItem('k_system_admin_user'))
-          ? JSON.parse(localStorage.getItem('k_system_admin_user') || '{}').username || 'system'
-          : 'system'
+      const checklist = {
+        siteClassification,
+        basicInfo: { mainBreaker, peakPower, phaseType, faucetMethod, transformerCapacity, cableSize, installationLocation },
+        phaseData,
+        harmonicAnalysis,
+        voltageDrop,
+        conditions,
+        loadInspection,
+        loadProfile,
+        specialNotes,
+        economic,
+        equipmentSizing
       }
 
+      const isEdit = Boolean(editFormID)
+      const payload: any = isEdit
+        ? { formID: editFormID, site_address: siteAddress, checklist, notes: '', photos: [], status: 'pending' }
+        : {
+            customer_name: customerName,
+            site_address: siteAddress,
+            contact_phone: contactPhone,
+            inspection_date: inspectionDate,
+            checklist,
+            notes: '',
+            photos: [],
+            status: 'pending',
+            created_by: (typeof window !== 'undefined' && localStorage.getItem('k_system_admin_user'))
+              ? JSON.parse(localStorage.getItem('k_system_admin_user') || '{}').username || 'system'
+              : 'system'
+          }
+
       const res = await fetch('/api/pre-installation', {
-        method: 'POST',
+        method: isEdit ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       })
       const j = await res.json()
 
       if (res.ok && j.success) {
-        alert(L('Pre-installation form saved successfully!', 'บันทึกแบบฟอร์มก่อนการติดตั้งเรียบร้อย!'))
+        alert(isEdit
+          ? L('Updated successfully!', 'อัปเดตข้อมูลเรียบร้อย!')
+          : L('Pre-installation form saved successfully!', 'บันทึกแบบฟอร์มก่อนการติดตั้งเรียบร้อย!')
+        )
         router.push('/KR-Thailand/Admin-Login/pre-installation/list')
       } else {
         alert(L('Failed to save', 'บันทึกไม่สำเร็จ') + ': ' + (j.error || ''))
@@ -288,7 +339,10 @@ export default function PreInstallationFormPage() {
               <path d="M9 11l3 3L22 4"/>
               <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
             </svg>
-            {L('Pre-Installation Checklist', 'รายการตรวจสอบก่อนการติดตั้ง')}
+            {editFormID
+              ? L(`Edit Pre-Installation #${editFormID}`, `แก้ไขแบบฟอร์มก่อนติดตั้ง #${editFormID}`)
+              : L('Pre-Installation Checklist', 'รายการตรวจสอบก่อนการติดตั้ง')
+            }
           </h2>
           <p className={styles.cardSubtitle}>
             {L('Pre-installation site survey checklist', 'แบบฟอร์มตรวจสอบก่อนการติดตั้ง')}
@@ -1204,7 +1258,12 @@ export default function PreInstallationFormPage() {
                 <polyline points="17 21 17 13 7 13 7 21"/>
                 <polyline points="7 3 7 8 15 8"/>
               </svg>
-              {saving ? L('Saving...', 'กำลังบันทึก...') : L('Save Checklist', 'บันทึกรายการตรวจสอบ')}
+              {saving
+                ? L('Saving...', 'กำลังบันทึก...')
+                : editFormID
+                  ? L('Update Checklist', 'อัปเดตรายการตรวจสอบ')
+                  : L('Save Checklist', 'บันทึกรายการตรวจสอบ')
+              }
             </button>
             <button onClick={() => router.back()} className={`${styles.btn} ${styles.btnSecondary} ${styles.btnLarge}`}>
               {L('Cancel', 'ยกเลิก')}
@@ -1213,5 +1272,13 @@ export default function PreInstallationFormPage() {
         </div>
       </div>
     </AdminLayout>
+  )
+}
+
+export default function PreInstallationFormPage() {
+  return (
+    <Suspense fallback={<div style={{ padding: 20, textAlign: 'center' }}>Loading...</div>}>
+      <PreInstallationFormContent />
+    </Suspense>
   )
 }
