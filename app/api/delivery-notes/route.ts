@@ -127,6 +127,42 @@ export async function GET(req: NextRequest) {
   }
 }
 
+let tablesEnsured = false
+async function ensureDeliveryTables() {
+  if (tablesEnsured) return
+  tablesEnsured = true
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS delivery_notes (
+      deliveryID int NOT NULL AUTO_INCREMENT,
+      deliveryNo varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL,
+      deliveryDate date DEFAULT NULL,
+      invID int DEFAULT NULL,
+      cusID int DEFAULT NULL,
+      notes text COLLATE utf8mb4_unicode_ci,
+      status varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT 'confirmed',
+      created_by varchar(150) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+      created_at timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (deliveryID),
+      UNIQUE KEY deliveryNo (deliveryNo)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS delivery_note_items (
+      itemID int NOT NULL AUTO_INCREMENT,
+      deliveryID int NOT NULL,
+      productID int DEFAULT NULL,
+      sku varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+      product_name varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+      quantity decimal(10,2) DEFAULT 0.00,
+      PRIMARY KEY (itemID),
+      KEY deliveryID (deliveryID),
+      CONSTRAINT fk_dni_deliveryID FOREIGN KEY (deliveryID) REFERENCES delivery_notes (deliveryID) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `)
+  try { await pool.query(`ALTER TABLE delivery_notes ADD COLUMN contractID int DEFAULT NULL`) } catch (_) {}
+  try { await pool.query(`ALTER TABLE delivery_notes ADD COLUMN quoID int DEFAULT NULL`) } catch (_) {}
+}
+
 export async function POST(req: NextRequest) {
   const connection = await pool.getConnection()
 
@@ -147,12 +183,14 @@ export async function POST(req: NextRequest) {
       cusID,
       status,
       contractID,
+      quoID,
     } = body
 
     if (!deliveryNo) {
       return NextResponse.json({ success: false, error: 'Delivery number is required' }, { status: 400 })
     }
 
+    await ensureDeliveryTables()
     await connection.beginTransaction()
 
     const notesJson = JSON.stringify({
@@ -166,8 +204,8 @@ export async function POST(req: NextRequest) {
 
     const [result]: any = await connection.query(
       `INSERT INTO delivery_notes
-       (deliveryNo, deliveryDate, invID, cusID, notes, status, created_by, created_at, contractID)
-       VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), ?)`,
+       (deliveryNo, deliveryDate, invID, cusID, notes, status, created_by, created_at, contractID, quoID)
+       VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?)`,
       [
         deliveryNo,
         deliveryDate || new Date().toISOString().slice(0, 10),
@@ -177,6 +215,7 @@ export async function POST(req: NextRequest) {
         status || 'confirmed',
         created_by || null,
         contractID || null,
+        quoID || null,
       ]
     )
 

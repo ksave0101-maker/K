@@ -48,19 +48,15 @@ export default function DeliveryNotePage() {
   const [vehicleNo, setVehicleNo] = useState('')
   const [notes, setNotes] = useState('')
   const [refOrderNo, setRefOrderNo] = useState('')
+  const [quoID, setQuoID] = useState<number | null>(null)
   const [loading, setLoading] = useState(false)
   const [customers, setCustomers] = useState<any[]>([])
-  const [showInvoiceModal, setShowInvoiceModal] = useState(false)
-  const [invoices, setInvoices] = useState<any[] | null>(null)
-  const [invoiceSearch, setInvoiceSearch] = useState('')
-  const [invoiceLoading, setInvoiceLoading] = useState(false)
+  const [showQuoModal, setShowQuoModal] = useState(false)
+  const [quotations, setQuotations] = useState<any[] | null>(null)
+  const [quoSearch, setQuoSearch] = useState('')
+  const [quoLoading, setQuoLoading] = useState(false)
 
-  const [locale, setLocale] = useState<'en'|'th'>(() => {
-    try {
-      const l = localStorage.getItem('locale') || localStorage.getItem('k_system_lang')
-      return l === 'th' ? 'th' : 'en'
-    } catch { return 'th' }
-  })
+  const [locale, setLocale] = useState<'en'|'th'>('th')
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -125,26 +121,27 @@ export default function DeliveryNotePage() {
     }
   }
 
+  function fallbackDeliveryNo() {
+    const today = new Date()
+    const yyyy = String(today.getFullYear())
+    const mm = String(today.getMonth() + 1).padStart(2, '0')
+    const dd = String(today.getDate()).padStart(2, '0')
+    setDeliveryNo(`DN-${yyyy}${mm}${dd}-0001`)
+    setDeliveryDate(today.toISOString().split('T')[0])
+  }
+
   async function refreshDeliveryNo() {
     try {
       const res = await fetch('/api/delivery-seq')
-      const j = await res.json()
-      if (res.ok && j && j.success && j.formatted) {
+      const j = await res.json().catch(() => null)
+      if (res.ok && j?.success && j.formatted) {
         setDeliveryNo(j.formatted)
+        setDeliveryDate(new Date().toISOString().split('T')[0])
       } else {
-        // Fallback to local generation
-        const today = new Date()
-        const yy = String(today.getFullYear()).slice(-2)
-        const month = String(today.getMonth() + 1).padStart(2, '0')
-        const day = String(today.getDate()).padStart(2, '0')
-        const prefix = `DN-${yy}${month}${day}-`
-        const seq = String(1).padStart(4, '0')
-        setDeliveryNo(prefix + seq)
+        fallbackDeliveryNo()
       }
-      // Also update date to today
-      setDeliveryDate(new Date().toISOString().split('T')[0])
-    } catch (err) {
-      console.error('Error generating delivery note number:', err)
+    } catch {
+      fallbackDeliveryNo()
     }
   }
 
@@ -182,211 +179,46 @@ export default function DeliveryNotePage() {
     }
   }, [sameAsCustomer, customer])
 
-  useEffect(() => {
-    // Receive selected invoice from invoice list opened as a selector
-    function handler(e: MessageEvent) {
+  async function openQuoSearch() {
+    setShowQuoModal(true)
+    if (quotations !== null) return
+    setQuoLoading(true)
+    try {
+      const res = await fetch('/api/quotations?limit=100')
+      const j = await res.json().catch(() => null)
+      setQuotations(res.ok && j?.success ? (j.rows || []) : [])
+    } catch { setQuotations([]) }
+    finally { setQuoLoading(false) }
+  }
+
+  function closeQuoSearch() { setShowQuoModal(false); setQuoSearch('') }
+
+  async function selectQuotation(quo: any) {
+    setQuoID(quo.quoteID || null)
+    setRefOrderNo(quo.quoteNo || '')
+    if (quo.customer_name) {
+      setCustomer(prev => ({
+        ...prev,
+        name: quo.customer_name || prev.name,
+        phone: quo.customer_phone || prev.phone,
+      }))
+    }
+    if (quo.cusID) {
       try {
-        const d = e.data
-        if (!d || d.type !== 'k-system-invoice-selected') return
-        const inv = d.invoice
-        const invNo = inv?.invNo || inv?.invoice_no || inv?.inv_id || inv?.invNo
-        if (invNo) fetchAndApplyInvoice(String(invNo))
-      } catch (err) {
-        console.error('Error handling invoice selection message', err)
-      }
+        const res = await fetch(`/api/customers?id=${quo.cusID}`)
+        const j = await res.json().catch(() => null)
+        if (res.ok && j?.success && j.customer) {
+          const cu = j.customer
+          setCustomer({
+            name: cu.fullname || cu.name || quo.customer_name || '',
+            address: cu.address || '',
+            phone: cu.phone || cu.tel || quo.customer_phone || '',
+            contactPerson: cu.contact_person || ''
+          })
+        }
+      } catch { /* use quo data already set */ }
     }
-    window.addEventListener('message', handler)
-    return () => window.removeEventListener('message', handler)
-  }, [])
-
-  async function importFromInvoice() {
-    // keep backward-compatible prompt flow
-    const invNo = window.prompt(L('Enter Invoice No.', 'กรุณาใส่เลขที่ใบแจ้งหนี้'))
-    if (!invNo) return
-    await fetchAndApplyInvoice(invNo)
-  }
-
-  async function fetchAndApplyInvoice(invNo: string) {
-    try {
-      const res = await fetch(`/api/invoices?invNo=${encodeURIComponent(invNo)}`)
-      const j = await res.json()
-      if (!res.ok || !j.success || !j.invoice) {
-        alert(L('Invoice not found', 'ไม่พบใบแจ้งหนี้'))
-        return
-      }
-      const inv = j.invoice
-      // Set reference
-      setRefOrderNo(invNo)
-      // Get customer info if available
-      if (inv.cusID) {
-        try {
-          const cusRes = await fetch(`/api/customers?id=${inv.cusID}`)
-          const cusJ = await cusRes.json()
-          if (cusRes.ok && cusJ.success && cusJ.customer) {
-            const cu = cusJ.customer
-            setCustomer({
-              name: cu.fullname || cu.name || '',
-              address: cu.address || '',
-              phone: cu.phone || cu.tel || '',
-              contactPerson: cu.contact_person || ''
-            })
-          }
-        } catch (e) { console.error(e) }
-      }
-      // Set items from invoice: map invoice.items if present
-      if (Array.isArray(inv.items) && inv.items.length > 0) {
-        const mapped = inv.items.map((it: any) => ({
-          desc: it.description || it.desc || it.product_name || it.name || '',
-          qty: Number(it.quantity || it.qty || 1) || 1,
-          unit: it.unit || it.uom || 'ชิ้น',
-          remark: it.remark || it.note || ''
-        }))
-        setItems(mapped)
-      } else {
-        // Fallback: use invoice total as a single item
-        setItems([{
-          desc: L('Goods as per Invoice ', 'สินค้าตามใบแจ้งหนี้ ') + invNo,
-          qty: 1,
-          unit: 'ชุด',
-          remark: L('Total: ', 'ยอดรวม: ') + Number(inv.total_amount || 0).toFixed(2) + ' ฿'
-        }])
-      }
-      alert(L('Invoice imported successfully', 'นำเข้าข้อมูลจากใบแจ้งหนี้สำเร็จ'))
-    } catch (err) {
-      console.error(err)
-      alert(L('Failed to fetch invoice', 'เกิดข้อผิดพลาดขณะดึงข้อมูลใบแจ้งหนี้'))
-    }
-  }
-
-  async function openInvoiceSearch() {
-    setShowInvoiceModal(true)
-    if (invoices !== null) return
-    try {
-      setInvoiceLoading(true)
-      const res = await fetch('/api/invoices?limit=50')
-      const j = await res.json()
-      if (res.ok && j && j.success) {
-        // try common keys
-        const data = j.invoices || j.list || (Array.isArray(j) ? j : [])
-        setInvoices(Array.isArray(data) ? data : [])
-      } else {
-        setInvoices([])
-      }
-    } catch (e) {
-      console.error('Failed to fetch invoices', e)
-      setInvoices([])
-    } finally { setInvoiceLoading(false) }
-  }
-
-  function closeInvoiceSearch() { setShowInvoiceModal(false); setInvoiceSearch('') }
-
-  async function selectInvoice(inv: any) {
-    const invNo = inv.invNo || inv.inv_id || inv.invNo || inv.invoice_no || inv.invNo
-    if (!invNo) return
-    await fetchAndApplyInvoice(String(invNo))
-    closeInvoiceSearch()
-  }
-
-  async function importFromReceipt() {
-    const receiptNo = window.prompt(L('Enter Receipt No.', 'กรุณาใส่เลขที่ใบเสร็จรับเงิน'))
-    if (!receiptNo) return
-    try {
-      const res = await fetch('/api/receipts')
-      const j = await res.json()
-      if (!res.ok || !j.success) {
-        alert(L('Failed to fetch receipts', 'ไม่สามารถดึงข้อมูลใบเสร็จได้'))
-        return
-      }
-      const receipt = (j.receipts || []).find((r: any) => r.receiptNo === receiptNo)
-      if (!receipt) {
-        alert(L('Receipt not found', 'ไม่พบใบเสร็จรับเงิน'))
-        return
-      }
-      // Set reference
-      setRefOrderNo(receipt.invoice_no || receiptNo)
-      // Get customer info from linked invoice if available
-      if (receipt.invoice_no) {
-        try {
-          const invRes = await fetch(`/api/receipts?invNo=${encodeURIComponent(receipt.invoice_no)}`)
-          const invJ = await invRes.json()
-          if (invRes.ok && invJ.success && invJ.invoice && invJ.invoice.cusID) {
-            const cusRes = await fetch(`/api/customers?id=${invJ.invoice.cusID}`)
-            const cusJ = await cusRes.json()
-            if (cusRes.ok && cusJ.success && cusJ.customer) {
-              const cu = cusJ.customer
-              setCustomer({
-                name: cu.fullname || cu.name || '',
-                address: cu.address || '',
-                phone: cu.phone || cu.tel || '',
-                contactPerson: cu.contact_person || ''
-              })
-            }
-          }
-        } catch (e) { console.error(e) }
-      }
-      // Set items from receipt
-      setItems([{
-        desc: L('Goods as per Receipt ', 'สินค้าตามใบเสร็จ ') + receiptNo,
-        qty: 1,
-        unit: 'ชุด',
-        remark: L('Amount: ', 'จำนวนเงิน: ') + Number(receipt.amount || 0).toFixed(2) + ' ฿'
-      }])
-      alert(L('Receipt imported successfully', 'นำเข้าข้อมูลจากใบเสร็จสำเร็จ'))
-    } catch (err) {
-      console.error(err)
-      alert(L('Failed to fetch receipt', 'เกิดข้อผิดพลาดขณะดึงข้อมูลใบเสร็จ'))
-    }
-  }
-
-  function handlePrint() {
-    const printContent = printRef.current
-    if (!printContent) return
-
-    const printWindow = window.open('', '_blank')
-    if (!printWindow) {
-      alert(L('Please allow popups for printing', 'กรุณาอนุญาต popup สำหรับการพิมพ์'))
-      return
-    }
-
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>${L('Delivery Note', 'ใบจัดส่งสินค้า')} - ${deliveryNo}</title>
-        <style>
-          body { position: relative; }
-          @page { size: A4; margin: 15mm; }
-          body { font-family: 'Sarabun', sans-serif; font-size: 14px; color: #333; }
-          .logo { position: absolute; left: 20px; top: 20px; width: 60px; }
-          .delivery-note { max-width: 210mm; margin: 0 auto; padding: 20px; }
-          .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 10px; }
-          .header h1 { margin: 0; font-size: 24px; }
-          .header .company { font-size: 16px; color: #666; margin-top: 5px; }
-          .info-row { display: flex; justify-content: space-between; margin-bottom: 20px; gap: 20px; }
-          .info-box { flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 4px; }
-          .info-box h3 { margin: 0 0 8px 0; font-size: 14px; color: #666; border-bottom: 1px solid #eee; padding-bottom: 4px; }
-          .info-box p { margin: 4px 0; font-size: 13px; }
-          .doc-info { display: flex; justify-content: space-between; margin-bottom: 16px; padding: 10px; background: #f5f5f5; border-radius: 4px; }
-          table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-          th, td { border: 1px solid #ddd; padding: 8px 10px; text-align: left; }
-          th { background: #f5f5f5; font-weight: 600; }
-          .text-right { text-align: right; }
-          .text-center { text-align: center; }
-          .notes { margin-top: 20px; padding: 10px; background: #fffbeb; border: 1px solid #fcd34d; border-radius: 4px; }
-          .footer { margin-top: 40px; display: flex; justify-content: space-between; }
-          .signature-box { width: 180px; text-align: center; }
-          .signature-line { border-top: 1px solid #333; margin-top: 60px; padding-top: 8px; }
-          @media print { body { print-color-adjust: exact; -webkit-print-color-adjust: exact; } }
-        </style>
-      </head>
-      <body>
-        <div class="logo"><img src="/k-energy-save-logo.jpg" style="width:80px;height:80px;border-radius:8px;object-fit:contain;background:#fff;padding:4px;border:1px solid #ddd" alt="K Energy Save"/></div>
-        ${printContent.innerHTML}
-        <script>window.onload = function() { window.print(); }</script>
-      </body>
-      </html>
-    `)
-    printWindow.document.close()
+    closeQuoSearch()
   }
 
   function handleReset() {
@@ -401,7 +233,7 @@ export default function DeliveryNotePage() {
     setVehicleNo('')
     setNotes('')
     setRefOrderNo('')
-    // Generate new delivery number
+    setQuoID(null)
     refreshDeliveryNo()
   }
 
@@ -409,6 +241,10 @@ export default function DeliveryNotePage() {
     e.preventDefault()
     if (!deliveryNo) {
       alert(L('Please generate Delivery Note number', 'กรุณาสร้างเลขที่ใบจัดส่ง'))
+      return
+    }
+    if (!quoID) {
+      alert(L('Please select a Quotation', 'กรุณาเลือกใบเสนอราคาก่อนบันทึก'))
       return
     }
     if (!customer.name) {
@@ -431,6 +267,7 @@ export default function DeliveryNotePage() {
         vehicleNo,
         notes,
         refOrderNo,
+        quoID: quoID || null,
         created_by: createdBy
       }
 
@@ -513,13 +350,24 @@ export default function DeliveryNotePage() {
                 />
               </div>
               <div className={styles.formGroup}>
-                <label className={styles.formLabel}>{L('Ref. Order No.', 'อ้างอิงใบสั่งซื้อ')}</label>
-                <input
-                  value={refOrderNo}
-                  onChange={e => setRefOrderNo(e.target.value)}
-                  className={styles.formInput}
-                  placeholder="PO-xxx"
-                />
+                <label className={styles.formLabel}>{L('Ref. Quotation', 'อ้างอิงใบเสนอราคา')} <span style={{ color: '#dc2626' }}>*</span></label>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input
+                    value={refOrderNo}
+                    readOnly
+                    className={styles.formInput}
+                    placeholder={L('Select a quotation...', 'เลือกใบเสนอราคา...')}
+                    style={{ flex: 1, background: '#f9fafb', cursor: 'pointer', borderColor: !quoID ? '#fca5a5' : undefined }}
+                    onClick={openQuoSearch}
+                  />
+                  {quoID && (
+                    <button type="button" onClick={() => { setQuoID(null); setRefOrderNo('') }}
+                      style={{ padding: '6px 10px', background: 'none', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', color: '#6b7280', fontSize: 14 }}>✕</button>
+                  )}
+                  <button type="button" className={styles.btnOutline} onClick={openQuoSearch}>
+                    {L('Search', 'ค้นหา')}
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -665,61 +513,53 @@ export default function DeliveryNotePage() {
               </div>
             </div>
 
-            {/* Import Section (Search only) */}
-            <div style={{ marginTop: 16, marginBottom: 16, padding: 12, background: '#f0f9ff', borderRadius: 8, border: '1px solid #bae6fd' }}>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                <span style={{ fontWeight: 600, color: '#0369a1' }}>{L('Import from:', 'นำเข้าจาก:')}</span>
-                <button type="button" onClick={() => {
-                  try {
-                    const w = window.open('/KR-Thailand/Admin-Login/invoice/list?select=1', '_blank')
-                    if (w) w.focus()
-                  } catch (e) {
-                    window.location.href = '/KR-Thailand/Admin-Login/invoice/list?select=1'
-                  }
-                }} className={styles.btn} style={{ padding: '8px 12px', background: '#0369a1', color: '#fff' }}>
-                  {L('Search Invoice', 'ค้นหาใบแจ้งหนี้')}
-                </button>
-              </div>
-            </div>
-
-            {showInvoiceModal && (
+            {/* Quotation search modal */}
+            {showQuoModal && (
               <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
-                <div style={{ width: '90%', maxWidth: 900, background: '#fff', borderRadius: 8, padding: 16 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                    <div style={{ fontWeight: 700 }}>{L('Select Invoice', 'เลือกใบแจ้งหนี้')}</div>
-                    <div>
-                      <input placeholder={L('Search by invoice no or customer', 'ค้นหาโดยเลขที่หรือชื่อลูกค้า')} value={invoiceSearch} onChange={e => setInvoiceSearch(e.target.value)} style={{ padding: 8, width: 320, border: '1px solid #e5e7eb', borderRadius: 6 }} />
-                      <button onClick={closeInvoiceSearch} style={{ marginLeft: 8, padding: '6px 10px' }}>✕</button>
+                <div style={{ width: '90%', maxWidth: 800, background: '#fff', borderRadius: 10, overflow: 'hidden', boxShadow: '0 8px 32px rgba(0,0,0,0.18)', display: 'flex', flexDirection: 'column', maxHeight: '80vh' }}>
+                  <div style={{ padding: '14px 20px', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc' }}>
+                    <span style={{ fontWeight: 700, fontSize: 16 }}>{L('Select Quotation', 'เลือกใบเสนอราคา')}</span>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <input
+                        placeholder={L('Search by quote no or customer', 'ค้นหาเลขที่หรือชื่อลูกค้า')}
+                        value={quoSearch}
+                        onChange={e => setQuoSearch(e.target.value)}
+                        autoFocus
+                        style={{ padding: '7px 12px', width: 280, border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 14 }}
+                      />
+                      <button onClick={closeQuoSearch} style={{ padding: '7px 12px', border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', cursor: 'pointer', fontSize: 16 }}>✕</button>
                     </div>
                   </div>
-                  <div style={{ maxHeight: '60vh', overflow: 'auto' }}>
-                    {invoiceLoading && <div>Loading…</div>}
-                    {!invoiceLoading && invoices && invoices.length === 0 && <div style={{ color: '#666' }}>{L('No invoices found', 'ไม่พบใบแจ้งหนี้')}</div>}
-                    {!invoiceLoading && invoices && invoices.length > 0 && (
-                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <div style={{ flex: 1, overflow: 'auto' }}>
+                    {quoLoading && <div style={{ padding: 40, textAlign: 'center', color: '#666' }}>{L('Loading...', 'กำลังโหลด...')}</div>}
+                    {!quoLoading && quotations && quotations.length === 0 && <div style={{ padding: 40, textAlign: 'center', color: '#666' }}>{L('No quotations found', 'ไม่พบใบเสนอราคา')}</div>}
+                    {!quoLoading && quotations && quotations.length > 0 && (
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
                         <thead>
-                          <tr>
-                            <th style={{ borderBottom: '1px solid #eee', padding: 8 }}>{L('Invoice No', 'เลขที่')}</th>
-                            <th style={{ borderBottom: '1px solid #eee', padding: 8 }}>{L('Date', 'วันที่')}</th>
-                            <th style={{ borderBottom: '1px solid #eee', padding: 8 }}>{L('Customer', 'ลูกค้า')}</th>
-                            <th style={{ borderBottom: '1px solid #eee', padding: 8, textAlign: 'right' }}>{L('Total', 'ยอดรวม')}</th>
-                            <th style={{ borderBottom: '1px solid #eee', padding: 8 }}>{L('', '')}</th>
+                          <tr style={{ background: '#f1f5f9' }}>
+                            <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 600 }}>{L('Quote No.', 'เลขที่')}</th>
+                            <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 600 }}>{L('Date', 'วันที่')}</th>
+                            <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 600 }}>{L('Customer', 'ลูกค้า')}</th>
+                            <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 600 }}>{L('Total', 'ยอดรวม')}</th>
+                            <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 600 }}>{L('Status', 'สถานะ')}</th>
+                            <th style={{ padding: '10px 14px' }}></th>
                           </tr>
                         </thead>
                         <tbody>
-                          {invoices.filter(inv => {
-                            if (!invoiceSearch) return true
-                            const s = invoiceSearch.toLowerCase()
-                            const invNo = String(inv.invNo || inv.inv_id || inv.invoice_no || '')
-                            const cust = String(inv.customer_name || inv.cusName || inv.customer || '')
-                            return invNo.toLowerCase().includes(s) || cust.toLowerCase().includes(s)
-                          }).map((inv: any) => (
-                            <tr key={inv.invNo || inv.inv_id || inv.invoice_no}>
-                              <td style={{ padding: 8, borderBottom: '1px solid #f3f4f6' }}>{inv.invNo || inv.invoice_no || inv.inv_id}</td>
-                              <td style={{ padding: 8, borderBottom: '1px solid #f3f4f6' }}>{inv.invoice_date || inv.invDate || '-'}</td>
-                              <td style={{ padding: 8, borderBottom: '1px solid #f3f4f6' }}>{inv.customer_name || inv.customer || '-'}</td>
-                              <td style={{ padding: 8, borderBottom: '1px solid #f3f4f6', textAlign: 'right' }}>{Number(inv.total_amount || inv.amount || 0).toFixed(2)}</td>
-                              <td style={{ padding: 8, borderBottom: '1px solid #f3f4f6' }}><button onClick={() => selectInvoice(inv)} className={styles.btn}>Select</button></td>
+                          {quotations.filter(q => {
+                            if (!quoSearch) return true
+                            const s = quoSearch.toLowerCase()
+                            return String(q.quoteNo || '').toLowerCase().includes(s) || String(q.customer_name || '').toLowerCase().includes(s)
+                          }).map((q: any) => (
+                            <tr key={q.quoteID} style={{ borderBottom: '1px solid #f3f4f6' }} onMouseEnter={e => (e.currentTarget.style.background = '#f0f9ff')} onMouseLeave={e => (e.currentTarget.style.background = '')}>
+                              <td style={{ padding: '10px 14px', fontWeight: 600, color: '#1d4ed8' }}>{q.quoteNo || '-'}</td>
+                              <td style={{ padding: '10px 14px' }}>{q.quoteDate ? new Date(q.quoteDate).toLocaleDateString('th-TH') : '-'}</td>
+                              <td style={{ padding: '10px 14px' }}>{q.customer_name || '-'}</td>
+                              <td style={{ padding: '10px 14px', textAlign: 'right' }}>{Number(q.total || 0).toLocaleString('th-TH', { minimumFractionDigits: 2 })}</td>
+                              <td style={{ padding: '10px 14px' }}><span style={{ padding: '2px 10px', borderRadius: 12, fontSize: 12, background: q.status === 'approved' ? '#dcfce7' : '#f1f5f9', color: q.status === 'approved' ? '#166534' : '#64748b' }}>{q.status || 'draft'}</span></td>
+                              <td style={{ padding: '10px 14px' }}>
+                                <button onClick={() => selectQuotation(q)} className={styles.btn} style={{ padding: '6px 14px', fontSize: 13 }}>{L('Select', 'เลือก')}</button>
+                              </td>
                             </tr>
                           ))}
                         </tbody>

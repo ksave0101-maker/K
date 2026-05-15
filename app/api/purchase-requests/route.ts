@@ -10,7 +10,10 @@ const BRANCH_KEYWORDS: Record<string, string[]> = {
   brunei: ['brunei', 'บรูไน', 'bn']
 }
 
+let tableEnsured = false
 async function ensurePurchaseRequestTable() {
+  if (tableEnsured) return
+  tableEnsured = true
   await pool.query(`
     CREATE TABLE IF NOT EXISTS purchase_requests (
       prID int NOT NULL AUTO_INCREMENT,

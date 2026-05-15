@@ -10,6 +10,7 @@ function PurchaseRequestPrintContent() {
   const prNo = searchParams?.get('prNo') || ''
   const auto = searchParams?.get('autoPrint')
   const [doc, setDoc] = useState<any | null>(null)
+  const [fetchDone, setFetchDone] = useState(false)
   const [loggedUser, setLoggedUser] = useState<string | null>(null)
   const [printCount, setPrintCount] = useState<number>(0)
   const [lastPrinted, setLastPrinted] = useState<string | null>(null)
@@ -29,14 +30,20 @@ function PurchaseRequestPrintContent() {
     if (!idOrNo) return
     ;(async () => {
       try {
-        let res = await fetch(`/api/purchase-requests?prID=${encodeURIComponent(prID)}`)
+        const isNumericId = /^\d+$/.test(prNo)
+        const byId = prID || isNumericId
+        const url = byId
+          ? `/api/purchase-requests?prID=${encodeURIComponent(prID || prNo)}`
+          : `/api/purchase-requests?prNo=${encodeURIComponent(prNo)}`
+        let res = await fetch(url)
         let j = await res.json().catch(() => null)
-        if (!(res.ok && j && j.success && j.purchaseRequest)) {
-          res = await fetch(`/api/purchase-requests?prNo=${encodeURIComponent(prNo || prID)}`)
+        // If ID lookup returned nothing, retry by prNo
+        if (byId && !(j?.success && (j.purchaseRequest || j.rows?.[0]))) {
+          res = await fetch(`/api/purchase-requests?prNo=${encodeURIComponent(prNo)}`)
           j = await res.json().catch(() => null)
         }
         if (j && j.success) {
-          const q = j.purchaseRequest || j.purchaseRequests?.[0] || null
+          const q = j.purchaseRequest || j.rows?.[0] || null
           if (q && q.items && typeof q.items === 'string') {
             try { q.items = JSON.parse(q.items) } catch (_) {}
           }
@@ -44,6 +51,8 @@ function PurchaseRequestPrintContent() {
         }
       } catch (err) {
         console.error('Failed to load purchase request for print', err)
+      } finally {
+        setFetchDone(true)
       }
     })()
   }, [prID, prNo])
@@ -80,7 +89,8 @@ function PurchaseRequestPrintContent() {
   }, [doc, auto])
 
   if (!prID && !prNo) return <div style={{ padding: 20 }}>Missing prID or prNo</div>
-  if (!doc) return <div style={{ padding: 20 }}>Loading...</div>
+  if (!doc && !fetchDone) return <div style={{ padding: 20 }}>Loading...</div>
+  if (!doc) return <div style={{ padding: 20 }}>Purchase request not found (prNo: {prNo || prID})</div>
 
   const updateQueryStringParameter = (uri: string, key: string, value: string) => {
     try {
