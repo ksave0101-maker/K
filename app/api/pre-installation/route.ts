@@ -101,13 +101,13 @@ export async function POST(request: NextRequest) {
     const now = new Date()
     const yearMonth = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`
     await pool.query(
-      `INSERT INTO document_counters (prefix, year_month, counter)
+      `INSERT INTO document_counters (prefix, \`year_month\`, counter)
        VALUES ('PRE', ?, 1)
        ON DUPLICATE KEY UPDATE counter = counter + 1`,
       [yearMonth]
     )
     const [counterRows] = await pool.query(
-      `SELECT counter FROM document_counters WHERE prefix = 'PRE' AND year_month = ?`,
+      `SELECT counter FROM document_counters WHERE prefix = 'PRE' AND \`year_month\` = ?`,
       [yearMonth]
     )
     const counter = (counterRows as any)[0].counter
