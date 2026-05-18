@@ -22,10 +22,7 @@ export async function GET(request: NextRequest) {
         r.notes,
         r.created_by,
         r.created_at,
-        CASE
-          WHEN r.amount > 0 THEN 'paid'
-          ELSE 'pending'
-        END as status
+        COALESCE(r.status, IF(r.amount > 0, 'paid', 'pending')) as status
       FROM receipts r
       LEFT JOIN cus_detail c ON r.cusID = c.cusID
     `
@@ -55,5 +52,22 @@ export async function GET(request: NextRequest) {
       { success: false, error: error.message },
       { status: 500 }
     )
+  }
+}
+
+export async function PATCH(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const id = body?.id || body?.receiptID
+    const status = body?.status
+
+    if (!id) return NextResponse.json({ success: false, error: 'id required' }, { status: 400 })
+    if (!status) return NextResponse.json({ success: false, error: 'status required' }, { status: 400 })
+
+    await pool.query(`UPDATE receipts SET status = ? WHERE receiptID = ?`, [status, id])
+    return NextResponse.json({ success: true })
+  } catch (error: any) {
+    console.error('Customer payments PATCH error:', error)
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 })
   }
 }

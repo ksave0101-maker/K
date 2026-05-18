@@ -99,7 +99,7 @@ function StatusCell({ current, apiPath, rowId, onUpdate, rowIdKey, editable = tr
         <select value={value} onChange={e => setValue(e.target.value)} style={{ padding: '6px 8px', borderRadius: 6 }}>
           {options.map(op => <option key={op} value={op}>{op}</option>)}
         </select>
-        <input value={code} onChange={e => setCode(e.target.value)} placeholder="Enter code to save" style={{ padding: '6px 8px', borderRadius: 6, width: 120 }} />
+        <input value={code} onChange={e => setCode(e.target.value)} placeholder="รหัส (1114)" title="รหัสยืนยัน: 1114" style={{ padding: '6px 8px', borderRadius: 6, width: 100 }} />
         <button onClick={save} disabled={saving} className={styles.btnPrimary} style={{ padding: '6px 10px' }}>{saving ? 'Saving...' : 'Save'}</button>
         <button onClick={() => { setEditing(false); setCode(''); setValue(current) }} className={styles.btnOutline} style={{ padding: '6px 10px' }}>Cancel</button>
       </div>

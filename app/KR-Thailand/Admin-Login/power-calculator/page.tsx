@@ -78,13 +78,14 @@ export default function PowerCalculatorPage() {
           setCustomerName(params.customerName || '')
           setUnitPrice(params.unitPrice || 5.0)
           setExpectedSavingsPercent(params.expectedSavingsPercent || 10)
-          setDeviceCost(params.deviceCost || 0)
-          setAmortizeMonths(params.amortizeMonths || 12)
           setContractedCapacity(params.contractedCapacity || 0)
           setPeakPower(params.peakPower || 0)
           setAvgMonthlyUsage(params.avgMonthlyUsage || 0)
           setFaucetMethod(params.faucetMethod || '')
-          setPowerSavingRate(params.powerSavingRate || 10)
+          // powerSavingRate merged into expectedSavingsPercent
+          if (params.powerSavingRate && !params.expectedSavingsPercent) {
+            setExpectedSavingsPercent(params.powerSavingRate || 10)
+          }
           setDeviceCapacity(params.deviceCapacity || 30)
           setProductPrice(params.productPrice || 128037)
           setPaymentMonths(params.paymentMonths || 60)
@@ -116,9 +117,7 @@ export default function PowerCalculatorPage() {
   const [pf, setPf] = useState<number>(1)
   const [phase, setPhase] = useState<'single'|'three'>('single')
   const [appliances, setAppliances] = useState<Array<any>>([])
-  const [newAppliance, setNewAppliance] = useState<{name:string; power:number; qty:number; hours:number}>({ name: '', power: 5, qty: 1, hours: 1 })
   const [usageHistory, setUsageHistory] = useState<Array<any>>([])
-  const [newUsage, setNewUsage] = useState<{period:string; kwh:number; peak_kw?:number}>({ period: '', kwh: 0 })
   const [results, setResults] = useState({ real: 0, apparent: 0, reactive: 0 })
   const [title, setTitle] = useState<string>('Power Calculation')
   const [customer, setCustomer] = useState<{ cusID?: number; name?: string; phone?: string; address?: string } | null>(null)
@@ -143,20 +142,148 @@ export default function PowerCalculatorPage() {
   const [twelveMonths, setTwelveMonths] = useState<Array<{ period: string; kwh: number; peak_kw?: number }>>([])
   const [unitPrice, setUnitPrice] = useState<number>(5.0)
   const [expectedSavingsPercent, setExpectedSavingsPercent] = useState<number>(10)
-  const [deviceCost, setDeviceCost] = useState<number>(0)
-  const [amortizeMonths, setAmortizeMonths] = useState<number>(12)
+  const [deviceCost] = useState<number>(0)           // kept for save payload; UI removed
+  const [amortizeMonths] = useState<number>(12)      // kept for save payload; UI removed
   const [contractedCapacity, setContractedCapacity] = useState<number>(0)
   const [peakPower, setPeakPower] = useState<number>(0)
   const [avgMonthlyUsage, setAvgMonthlyUsage] = useState<number>(0)
   const [faucetMethod, setFaucetMethod] = useState<string>('')
-  const [powerSavingRate, setPowerSavingRate] = useState<number>(10)
   const [deviceCapacity, setDeviceCapacity] = useState<number>(30)
   const [productPrice, setProductPrice] = useState<number>(128037)
   const [paymentMonths, setPaymentMonths] = useState<number>(60)
-  const [emissionFactor] = useState<number>(0.466)
+  const emissionFactor = 0.466  // constant — CO2 kg per kWh
   const [companyName, setCompanyName] = useState<string>('')
   const [customerName, setCustomerName] = useState<string>('')
   const [usageDataMonths, setUsageDataMonths] = useState<number>(6)
+
+  // ── Meter type & tariff ──────────────────────────────────────────────────────
+  const METER_PRESETS: Record<string, {
+    label: string
+    labelTh: string
+    sizes: string[]
+    serviceCharge: Record<string, number>  // size → ฿/month
+    tiers: { label: string; from: number; to: number; rate: number }[]
+    ftDefault: number
+    note?: string
+  }> = {
+    '1.1': {
+      label: 'Type 1.1 — Residential (≤150 units/month)',
+      labelTh: 'ประเภทที่ 1.1 — บ้านพักอาศัย (ไม่เกิน 150 หน่วย/เดือน)',
+      sizes: ['5(15)A', '15(45)A'],
+      serviceCharge: { '5(15)A': 8.19, '15(45)A': 23.62 },
+      tiers: [{ label: 'ทุกหน่วย', from: 0, to: Infinity, rate: 2.3488 }],
+      ftDefault: 0.1982,
+    },
+    '1.2': {
+      label: 'Type 1.2 — Residential (>150 units/month)',
+      labelTh: 'ประเภทที่ 1.2 — บ้านพักอาศัย (เกิน 150 หน่วย/เดือน)',
+      sizes: ['5(15)A', '15(45)A', '30(100)A'],
+      serviceCharge: { '5(15)A': 8.19, '15(45)A': 38.22, '30(100)A': 68.08 },
+      tiers: [
+        { label: 'หน่วยที่ 1–150', from: 0, to: 150, rate: 3.2484 },
+        { label: 'หน่วยที่ 151–400', from: 150, to: 400, rate: 4.2218 },
+        { label: 'หน่วยที่ 401+', from: 400, to: Infinity, rate: 4.4217 },
+      ],
+      ftDefault: 0.1982,
+    },
+    '2': {
+      label: 'Type 2 — Small Business',
+      labelTh: 'ประเภทที่ 2 — กิจการขนาดเล็ก',
+      sizes: ['5(15)A 1เฟส', '15(45)A 1เฟส', '5(15)A 3เฟส', '15(45)A 3เฟส'],
+      serviceCharge: { '5(15)A 1เฟส': 46.16, '15(45)A 1เฟส': 117.37, '5(15)A 3เฟส': 215.92, '15(45)A 3เฟส': 339.00 },
+      tiers: [
+        { label: 'หน่วยที่ 1–150', from: 0, to: 150, rate: 3.2484 },
+        { label: 'หน่วยที่ 151–400', from: 150, to: 400, rate: 4.2218 },
+        { label: 'หน่วยที่ 401+', from: 400, to: Infinity, rate: 4.4217 },
+      ],
+      ftDefault: 0.1982,
+    },
+    '3': {
+      label: 'Type 3 — Medium Business (TOU)',
+      labelTh: 'ประเภทที่ 3 — กิจการขนาดกลาง (TOU)',
+      sizes: ['TOU 3เฟส'],
+      serviceCharge: { 'TOU 3เฟส': 312.24 },
+      tiers: [
+        { label: 'On-Peak (09:00–22:00 จ.-ศ.)', from: 0, to: Infinity, rate: 5.7982 },
+        { label: 'Off-Peak (22:00–09:00 / เสาร์-อาทิตย์)', from: 0, to: Infinity, rate: 2.6048 },
+      ],
+      ftDefault: 0.1982,
+      note: 'กรอก kWh แยก On-Peak / Off-Peak',
+    },
+    '4': {
+      label: 'Type 4 — Large Business',
+      labelTh: 'ประเภทที่ 4 — กิจการขนาดใหญ่',
+      sizes: ['TOU 3เฟส ≤69kV', 'TOU 3เฟส 69kV', 'TOU 3เฟส 115kV+'],
+      serviceCharge: { 'TOU 3เฟส ≤69kV': 312.24, 'TOU 3เฟส 69kV': 312.24, 'TOU 3เฟส 115kV+': 312.24 },
+      tiers: [
+        { label: 'On-Peak', from: 0, to: Infinity, rate: 5.7374 },
+        { label: 'Off-Peak', from: 0, to: Infinity, rate: 2.5660 },
+      ],
+      ftDefault: 0.1982,
+    },
+    'custom': {
+      label: 'Custom / กำหนดเอง',
+      labelTh: 'กำหนดเอง',
+      sizes: ['กำหนดเอง'],
+      serviceCharge: { 'กำหนดเอง': 0 },
+      tiers: [{ label: 'อัตราเดียว', from: 0, to: Infinity, rate: 5.0 }],
+      ftDefault: 0,
+    },
+  }
+
+  const [meterTypeKey, setMeterTypeKey] = useState<string>('1.2')
+  const [meterSize, setMeterSize] = useState<string>('15(45)A')
+  const [ftRate, setFtRate] = useState<number>(0.1982)
+  const [tariffTiers, setTariffTiers] = useState<{ label: string; from: number; to: number; rate: number }[]>(
+    METER_PRESETS['1.2'].tiers
+  )
+  const [showTariffPanel, setShowTariffPanel] = useState<boolean>(false)
+  const [tariffMode, setTariffMode] = useState<'unit' | 'tou'>('unit')
+  const [touSlots, setTouSlots] = useState<{ timeFrom: string; timeTo: string; rate: number; kwh: number }[]>([
+    { timeFrom: '09:00', timeTo: '22:00', rate: 5.7982, kwh: 0 },
+    { timeFrom: '22:00', timeTo: '09:00', rate: 2.6048, kwh: 0 },
+  ])
+
+  // When meter type changes, reset to preset defaults
+  const handleMeterTypeChange = (key: string) => {
+    setMeterTypeKey(key)
+    const preset = METER_PRESETS[key]
+    if (!preset) return
+    const firstSize = preset.sizes[0]
+    setMeterSize(firstSize)
+    setFtRate(preset.ftDefault)
+    setTariffTiers(preset.tiers.map(t => ({ ...t })))
+  }
+
+  // Calculate actual electricity bill
+  const calcBill = (kwhUsage: number) => {
+    let energyCost = 0
+    let totalKwh = kwhUsage
+    if (tariffMode === 'tou') {
+      const filledSlots = touSlots.filter(s => s.kwh > 0)
+      if (filledSlots.length > 0) {
+        totalKwh = filledSlots.reduce((s, slot) => s + slot.kwh, 0)
+        energyCost = filledSlots.reduce((s, slot) => s + slot.kwh * slot.rate, 0)
+      } else {
+        // auto split: distribute kwhUsage proportionally among slots
+        const n = touSlots.length || 1
+        energyCost = touSlots.reduce((s, slot) => s + (kwhUsage / n) * slot.rate, 0)
+      }
+    } else {
+      let remaining = kwhUsage
+      for (const tier of tariffTiers) {
+        const tierWidth = tier.to === Infinity ? remaining : Math.min(remaining, tier.to - tier.from)
+        if (tierWidth <= 0) break
+        energyCost += tierWidth * tier.rate
+        remaining -= tierWidth
+        if (remaining <= 0) break
+      }
+    }
+    const ftCost = totalKwh * ftRate
+    const subtotal = energyCost + ftCost
+    const vat = subtotal * 0.07
+    return { energyCost, ftCost, vat, total: subtotal + vat, effectiveRate: totalKwh > 0 ? (subtotal + vat) / totalKwh : 0 }
+  }
 
   // Monthly electricity data for editable table (Jan-Dec)
   const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
@@ -164,17 +291,9 @@ export default function PowerCalculatorPage() {
   const [monthlyKwh, setMonthlyKwh] = useState<number[]>(() => Array(12).fill(0))
 
   // Print / report helpers
-  const printReport = () => {
+  const _printReport = () => {
     try {
       const titleText = title || 'Power Calculation Report'
-      const data = {
-        title: titleText,
-        customer,
-        voltage, current, pf, phase,
-        appliances,
-        usageHistory,
-        results
-      }
 
       const rowsAppliances = (appliances || []).map(a => `
         <tr>
@@ -387,34 +506,31 @@ export default function PowerCalculatorPage() {
 
   // Compute usage history totals for profit/loss table
   const usageHistoryTotals = useMemo(() => {
+    const savingPct = Number(expectedSavingsPercent || 0) / 100
+    const price = Number(unitPrice || 0)
     const totals = (usageHistory || []).reduce((s: any, u: any) => {
       const kwh = Number(u.kwh || 0)
-      const price = Number(unitPrice || 0)
       const costBefore = kwh * price
-      const savedKwh = kwh * (Number(expectedSavingsPercent || 0) / 100)
+      const savedKwh = kwh * savingPct
       const costAfter = (kwh - savedKwh) * price
       const savingBaht = costBefore - costAfter
       s.kwh += kwh
       s.costBefore += costBefore
       s.savingBaht += savingBaht
       s.costAfter += costAfter
-      s.monthlyProfit += (savingBaht - (amortizeMonths > 0 ? (Number(deviceCost || 0) / Number(amortizeMonths || 1)) : 0))
+      s.monthlyProfit += savingBaht   // no device cost deduction (field removed)
       return s
     }, { kwh: 0, costBefore: 0, savingBaht: 0, costAfter: 0, monthlyProfit: 0 })
 
-    const annualSavings = (usageHistory || []).reduce((s: number, u: any) =>
-      s + (Number(u.kwh || 0) * Number(unitPrice || 0) * (Number(expectedSavingsPercent || 0) / 100)), 0)
+    const annualSavings = totals.savingBaht   // already summed above
 
-    const paybackMonths = deviceCost > 0
-      ? Math.max(0, Number(deviceCost) / Math.max(1, annualSavings / 12))
-      : 0
-
-    return { ...totals, annualSavings, paybackMonths }
-  }, [usageHistory, unitPrice, expectedSavingsPercent, amortizeMonths, deviceCost])
+    return { ...totals, annualSavings, paybackMonths: 0 }
+  }, [usageHistory, unitPrice, expectedSavingsPercent])
 
   // Compute power analysis summary values
   const powerAnalysis = useMemo(() => {
-    const monthlySavingsKwh = avgMonthlyUsage * (powerSavingRate / 100);
+    // Use the same saving % as the profit/loss table for consistency
+    const monthlySavingsKwh = avgMonthlyUsage * (expectedSavingsPercent / 100);
     const monthlySavingsBaht = monthlySavingsKwh * unitPrice;
     const annualSavingsBaht = monthlySavingsBaht * 12;
     const carbonReduction = monthlySavingsKwh * 12 * emissionFactor;
@@ -443,7 +559,7 @@ export default function PowerCalculatorPage() {
       roiYears,
       roiTableData
     };
-  }, [avgMonthlyUsage, powerSavingRate, unitPrice, emissionFactor, productPrice, paymentMonths]);
+  }, [avgMonthlyUsage, expectedSavingsPercent, unitPrice, productPrice, paymentMonths]);
 
   return (
     <AdminLayout title="Power Calculator" titleTh="เครื่องคิดกำลังไฟฟ้า">
@@ -510,7 +626,14 @@ export default function PowerCalculatorPage() {
                   <div style={{ marginTop: 12, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                     <button className={`${styles.btn} ${styles.btnOutline}`} onClick={() => setShow12MonthModal(false)}>{L('Cancel','ยกเลิก')}</button>
                     <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => {
-                      setUsageHistory(twelveMonths)
+                      // Sync twelveMonths → monthlyKwh so the auto-sync useEffect
+                      // keeps usageHistory, avgMonthlyUsage, and usageHistoryTotals in sync
+                      const kwArr = Array(12).fill(0)
+                      twelveMonths.forEach(entry => {
+                        const m = parseInt((entry.period || '').split('-')[1] || '0', 10)
+                        if (m >= 1 && m <= 12) kwArr[m - 1] = entry.kwh || 0
+                      })
+                      setMonthlyKwh(kwArr)
                       setShow12MonthModal(false)
                     }}>{L('Save 12 months','บันทึก 12 เดือน')}</button>
                   </div>
@@ -831,6 +954,187 @@ export default function PowerCalculatorPage() {
             </div>
           )}
 
+          {/* ── Meter type & tariff calculator ─────────────────────────── */}
+          <div style={{ marginTop: 16, borderRadius: 8, border: '1px solid #d1fae5', background: '#f0fdf4', overflow: 'hidden' }}>
+            <button
+              type="button"
+              onClick={() => setShowTariffPanel(v => !v)}
+              style={{ width: '100%', padding: '10px 14px', background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+            >
+              <span style={{ fontWeight: 700, color: '#065f46', fontSize: 14 }}>
+                ⚡ {L('Meter Type & Electricity Tariff', 'ประเภทมิเตอร์และอัตราค่าไฟฟ้า')}
+                {meterTypeKey && <span style={{ marginLeft: 8, fontWeight: 400, color: '#047857', fontSize: 12 }}>({METER_PRESETS[meterTypeKey]?.labelTh})</span>}
+              </span>
+              <span style={{ color: '#065f46' }}>{showTariffPanel ? '▲' : '▼'}</span>
+            </button>
+
+            {showTariffPanel && (
+              <div style={{ padding: '0 14px 14px' }}>
+                {/* Meter type selector */}
+                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 12 }}>
+                  <div className={styles.formGroup} style={{ margin: 0 }}>
+                    <label className={styles.formLabel}>{L('Meter Type', 'ประเภทมิเตอร์')}</label>
+                    <select
+                      value={meterTypeKey}
+                      onChange={e => handleMeterTypeChange(e.target.value)}
+                      className={styles.formSelect}
+                      style={{ width: 320 }}
+                    >
+                      {Object.entries(METER_PRESETS).map(([k, v]) => (
+                        <option key={k} value={k}>{v.labelTh}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className={styles.formGroup} style={{ margin: 0 }}>
+                    <label className={styles.formLabel}>{L('Meter Size', 'ขนาดมิเตอร์')}</label>
+                    <input
+                      type="text"
+                      value={meterSize}
+                      onChange={e => setMeterSize(e.target.value)}
+                      className={styles.formInput}
+                      placeholder={L('e.g. 15(45)A', 'เช่น 15(45)A')}
+                      style={{ width: 160 }}
+                    />
+                  </div>
+                  <div className={styles.formGroup} style={{ margin: 0 }}>
+                    <label className={styles.formLabel}>{L('FT (฿/unit)', 'ค่า FT (฿/หน่วย)')}</label>
+                    <input type="number" step="0.0001" value={ftRate} onChange={e => setFtRate(Number(e.target.value))} className={styles.formInput} style={{ width: 100 }} />
+                  </div>
+                </div>
+
+                {/* Tier rates / TOU toggle */}
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: '#065f46' }}>{L('Rate Type', 'ประเภทอัตรา')}</span>
+                    <button type="button" onClick={() => setTariffMode('unit')}
+                      style={{ padding: '4px 12px', borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                        background: tariffMode === 'unit' ? '#065f46' : '#fff',
+                        color: tariffMode === 'unit' ? '#fff' : '#065f46',
+                        border: '1px solid #065f46' }}>
+                      {L('By Unit (Tiered)', 'ตามหน่วย (ขั้นบันได)')}
+                    </button>
+                    <button type="button" onClick={() => setTariffMode('tou')}
+                      style={{ padding: '4px 12px', borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                        background: tariffMode === 'tou' ? '#065f46' : '#fff',
+                        color: tariffMode === 'tou' ? '#fff' : '#065f46',
+                        border: '1px solid #065f46' }}>
+                      {L('By Time (TOU)', 'ตามเวลา (TOU)')}
+                    </button>
+                  </div>
+
+                  {tariffMode === 'unit' ? (
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                      <thead>
+                        <tr style={{ background: '#dcfce7' }}>
+                          <th style={{ padding: '6px 10px', textAlign: 'left', border: '1px solid #bbf7d0' }}>{L('Tier', 'ช่วงหน่วย')}</th>
+                          <th style={{ padding: '6px 10px', textAlign: 'right', border: '1px solid #bbf7d0', width: 140 }}>{L('Rate (฿/kWh)', 'อัตรา (฿/หน่วย)')}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {tariffTiers.map((tier, idx) => (
+                          <tr key={idx} style={{ background: idx % 2 === 0 ? '#f0fdf4' : '#fff' }}>
+                            <td style={{ padding: '6px 10px', border: '1px solid #bbf7d0' }}>{tier.label}</td>
+                            <td style={{ padding: '6px 10px', border: '1px solid #bbf7d0' }}>
+                              <input type="number" step="0.0001" value={tier.rate}
+                                onChange={e => setTariffTiers(prev => prev.map((t, i) => i === idx ? { ...t, rate: Number(e.target.value) } : t))}
+                                style={{ width: '100%', textAlign: 'right', padding: '4px 6px', borderRadius: 4, border: '1px solid #d1fae5' }} />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  ) : (
+                    <>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                        <thead>
+                          <tr style={{ background: '#dcfce7' }}>
+                            <th style={{ padding: '6px 8px', textAlign: 'center', border: '1px solid #bbf7d0', width: 90 }}>{L('From', 'เริ่ม')}</th>
+                            <th style={{ padding: '6px 8px', textAlign: 'center', border: '1px solid #bbf7d0', width: 90 }}>{L('To', 'ถึง')}</th>
+                            <th style={{ padding: '6px 8px', textAlign: 'right', border: '1px solid #bbf7d0', width: 130 }}>{L('Rate (฿/kWh)', 'อัตรา (฿/หน่วย)')}</th>
+                            <th style={{ padding: '6px 8px', textAlign: 'right', border: '1px solid #bbf7d0', width: 120 }}>{L('kWh used', 'หน่วยที่ใช้')}</th>
+                            <th style={{ padding: '6px 8px', border: '1px solid #bbf7d0', width: 36 }}></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {touSlots.map((slot, idx) => (
+                            <tr key={idx} style={{ background: idx % 2 === 0 ? '#f0fdf4' : '#fff' }}>
+                              <td style={{ padding: '4px 6px', border: '1px solid #bbf7d0' }}>
+                                <input type="time" value={slot.timeFrom}
+                                  onChange={e => setTouSlots(s => s.map((r, i) => i === idx ? { ...r, timeFrom: e.target.value } : r))}
+                                  style={{ width: '100%', padding: '4px 4px', borderRadius: 4, border: '1px solid #d1fae5', fontSize: 13 }} />
+                              </td>
+                              <td style={{ padding: '4px 6px', border: '1px solid #bbf7d0' }}>
+                                <input type="time" value={slot.timeTo}
+                                  onChange={e => setTouSlots(s => s.map((r, i) => i === idx ? { ...r, timeTo: e.target.value } : r))}
+                                  style={{ width: '100%', padding: '4px 4px', borderRadius: 4, border: '1px solid #d1fae5', fontSize: 13 }} />
+                              </td>
+                              <td style={{ padding: '4px 6px', border: '1px solid #bbf7d0' }}>
+                                <input type="number" step="0.0001" value={slot.rate}
+                                  onChange={e => setTouSlots(s => s.map((r, i) => i === idx ? { ...r, rate: Number(e.target.value) } : r))}
+                                  style={{ width: '100%', textAlign: 'right', padding: '4px 6px', borderRadius: 4, border: '1px solid #d1fae5' }} />
+                              </td>
+                              <td style={{ padding: '4px 6px', border: '1px solid #bbf7d0' }}>
+                                <input type="number" step="1" min="0" value={slot.kwh || ''}
+                                  placeholder={L('auto', 'auto')}
+                                  onChange={e => setTouSlots(s => s.map((r, i) => i === idx ? { ...r, kwh: Number(e.target.value) || 0 } : r))}
+                                  style={{ width: '100%', textAlign: 'right', padding: '4px 6px', borderRadius: 4, border: '1px solid #d1fae5' }} />
+                              </td>
+                              <td style={{ padding: '4px 4px', border: '1px solid #bbf7d0', textAlign: 'center' }}>
+                                <button type="button" onClick={() => setTouSlots(s => s.filter((_, i) => i !== idx))}
+                                  style={{ color: '#dc2626', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      <button type="button"
+                        onClick={() => setTouSlots(s => [...s, { timeFrom: '00:00', timeTo: '00:00', rate: 0, kwh: 0 }])}
+                        style={{ marginTop: 6, padding: '4px 12px', borderRadius: 6, background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#065f46', cursor: 'pointer', fontSize: 12 }}>
+                        + {L('Add time slot', 'เพิ่มช่วงเวลา')}
+                      </button>
+                      <div style={{ marginTop: 4, fontSize: 11, color: '#047857' }}>
+                        * {L('Leave kWh blank → system splits total kWh equally across all slots', 'ไม่กรอก kWh → ระบบแบ่งเท่าๆ กันอัตโนมัติ')}
+                      </div>
+                    </>
+                  )}
+                  {METER_PRESETS[meterTypeKey]?.note && tariffMode === 'unit' && (
+                    <div style={{ marginTop: 4, fontSize: 11, color: '#047857' }}>* {METER_PRESETS[meterTypeKey].note}</div>
+                  )}
+                </div>
+
+                {/* Bill preview for avg monthly kWh */}
+                {avgMonthlyUsage > 0 && (() => {
+                  const bill = calcBill(avgMonthlyUsage)
+                  return (
+                    <div style={{ background: '#fff', borderRadius: 6, border: '1px solid #bbf7d0', padding: 10, fontSize: 13 }}>
+                      <div style={{ fontWeight: 700, color: '#065f46', marginBottom: 6 }}>
+                        {L('Bill Preview', 'ตัวอย่างบิลค่าไฟ')} — {L('avg', 'เฉลี่ย')} {avgMonthlyUsage.toLocaleString()} {L('units/month', 'หน่วย/เดือน')}
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: '4px 16px' }}>
+                        <div>{L('Energy charge', 'ค่าพลังงาน')}: <strong>{bill.energyCost.toLocaleString('th-TH', { minimumFractionDigits: 2 })} ฿</strong></div>
+                        <div>FT: <strong>{bill.ftCost.toLocaleString('th-TH', { minimumFractionDigits: 2 })} ฿</strong></div>
+                        <div>VAT 7%: <strong>{bill.vat.toLocaleString('th-TH', { minimumFractionDigits: 2 })} ฿</strong></div>
+                        <div style={{ gridColumn: 'span 2', borderTop: '1px solid #bbf7d0', paddingTop: 4, marginTop: 4 }}>
+                          {L('Total', 'ยอดรวม')}: <strong style={{ color: '#065f46', fontSize: 15 }}>{bill.total.toLocaleString('th-TH', { minimumFractionDigits: 2 })} ฿</strong>
+                          <span style={{ marginLeft: 12, color: '#047857' }}>
+                            ({L('Effective rate', 'อัตราจริง')}: {bill.effectiveRate.toFixed(4)} ฿/หน่วย)
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        style={{ marginTop: 8, padding: '5px 12px', borderRadius: 6, background: '#065f46', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 12 }}
+                        onClick={() => setUnitPrice(Number(bill.effectiveRate.toFixed(4)))}
+                      >
+                        {L('Use this rate for savings calculation', 'ใช้อัตรานี้คำนวณการประหยัด')}
+                      </button>
+                    </div>
+                  )
+                })()}
+              </div>
+            )}
+          </div>
+
           {/* Pricing / savings inputs and 12-month profit/loss table */}
           <div style={{ marginTop: 16, padding: 12, background: '#fff', borderRadius: 8, border: '1px solid #eef2ff' }}>
             <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 8 }}>
@@ -841,14 +1145,6 @@ export default function PowerCalculatorPage() {
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <label style={{ fontSize: 13, color: '#334155' }}>{L('Expected saving %','คาดการณ์การประหยัด (%)')}</label>
                 <input type="number" value={expectedSavingsPercent} onChange={e => setExpectedSavingsPercent(Number(e.target.value))} className={styles.formInput} style={{ width: 80 }} />
-              </div>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <label style={{ fontSize: 13, color: '#334155' }}>{L('Device cost (THB)','ราคาติดตั้ง (บาท)')}</label>
-                <input type="number" value={deviceCost} onChange={e => setDeviceCost(Number(e.target.value))} className={styles.formInput} style={{ width: 140 }} />
-              </div>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <label style={{ fontSize: 13, color: '#334155' }}>{L('Amortize months','ผ่อนต่อ (เดือน)')}</label>
-                <input type="number" value={amortizeMonths} onChange={e => setAmortizeMonths(Number(e.target.value) || 1)} className={styles.formInput} style={{ width: 80 }} />
               </div>
             </div>
 
@@ -932,7 +1228,7 @@ export default function PowerCalculatorPage() {
             <div style={{ background: 'linear-gradient(135deg, #255899 0%, #1e4a80 100%)', padding: '16px 20px', color: '#fff' }}>
               <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700 }}>{L('Power saving analysis table', 'ตารางวิเคราะห์การประหยัดพลังงาน')}</h2>
               <div style={{ marginTop: 8, fontSize: 14 }}>
-                {L('Based on the power saving rate:', 'อิงจากอัตราประหยัด:')} ( <span style={{ color: '#ff0', fontWeight: 700 }}>{powerSavingRate}%</span> ) {L('this is an economic feasibility analysis of installing', 'นี่คือการวิเคราะห์ความเป็นไปได้ทางเศรษฐกิจของการติดตั้ง')}
+                {L('Based on the power saving rate:', 'อิงจากอัตราประหยัด:')} ( <span style={{ color: '#ff0', fontWeight: 700 }}>{expectedSavingsPercent}%</span> ) {L('this is an economic feasibility analysis of installing', 'นี่คือการวิเคราะห์ความเป็นไปได้ทางเศรษฐกิจของการติดตั้ง')}
                 <br />{L('a "smart power saving device" for', 'อุปกรณ์ประหยัดพลังงานอัจฉริยะสำหรับ')} <strong style={{ color: '#ff0' }}>{companyName || customer?.name || L('Customer', 'ลูกค้า')}</strong>
               </div>
             </div>
@@ -1020,7 +1316,7 @@ export default function PowerCalculatorPage() {
                     <tr>
                       <td style={{ border: '1px solid #ddd', padding: '8px 12px', background: '#fffde7' }}>{L('Power saving rate (%)', 'อัตราประหยัดพลังงาน (%)')}</td>
                       <td style={{ border: '1px solid #ddd', padding: '8px 12px', textAlign: 'right' }}>
-                        <input type="number" className={styles.formInput} value={powerSavingRate} onChange={e => setPowerSavingRate(Number(e.target.value || 0))} style={{ width: 80, textAlign: 'right' }} />%
+                        <input type="number" className={styles.formInput} value={expectedSavingsPercent} onChange={e => setExpectedSavingsPercent(Number(e.target.value || 0))} style={{ width: 80, textAlign: 'right' }} />%
                       </td>
                       <td style={{ border: '1px solid #ddd', padding: '8px 12px' }}></td>
                     </tr>
@@ -1295,7 +1591,7 @@ export default function PowerCalculatorPage() {
                     peakPower,
                     avgMonthlyUsage,
                     faucetMethod,
-                    powerSavingRate,
+                    powerSavingRate: expectedSavingsPercent,
                     deviceCapacity,
                     productPrice,
                     paymentMonths,
@@ -1368,7 +1664,7 @@ export default function PowerCalculatorPage() {
                     peakPower,
                     avgMonthlyUsage,
                     faucetMethod,
-                    powerSavingRate,
+                    powerSavingRate: expectedSavingsPercent,
                     deviceCapacity,
                     productPrice,
                     paymentMonths,
