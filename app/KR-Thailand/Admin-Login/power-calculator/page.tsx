@@ -842,7 +842,6 @@ export default function PowerCalculatorPage() {
             >
               <span style={{ fontWeight: 700, color: '#065f46', fontSize: 14 }}>
                 ⚡ {L('Meter Type & Electricity Tariff', 'ประเภทมิเตอร์และอัตราค่าไฟฟ้า')}
-                {meterTypeKey && <span style={{ marginLeft: 8, fontWeight: 400, color: '#047857', fontSize: 12 }}>({METER_PRESETS[meterTypeKey]?.labelTh})</span>}
               </span>
               <span style={{ color: '#065f46' }}>{showTariffPanel ? '▲' : '▼'}</span>
             </button>
