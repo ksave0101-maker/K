@@ -864,8 +864,10 @@ export default function PowerCalculatorPage() {
                     const subtotal         = basedTotal + ftAmt
                     const vatAmt           = subtotal * 0.07
                     const grandTotal       = subtotal + vatAmt
-                    const cellStyle        = { padding: '5px 8px', border: '1px solid #bbf7d0', fontSize: 13 } as const
-                    const inputStyle       = { width: '100%', textAlign: 'right' as const, padding: '3px 5px', borderRadius: 4, border: '1px solid #d1fae5', fontSize: 13 }
+                    const cellStyle        = { padding: '5px 8px', border: '1px solid #bbf7d0', fontSize: 13, verticalAlign: 'middle' as const } as const
+                    const inputStyle       = { width: '100%', minWidth: 0, textAlign: 'right' as const, padding: '3px 5px', borderRadius: 4, border: '1px solid #d1fae5', fontSize: 13 }
+                    const qtyInputWrapStyle = { display: 'grid' as const, gridTemplateColumns: 'minmax(52px, 1fr) 36px', alignItems: 'center' as const, gap: 6 }
+                    const qtyUnitStyle     = { fontSize: 11, color: '#374151', whiteSpace: 'nowrap' as const }
                     const amtStyle         = { ...cellStyle, textAlign: 'right' as const, fontWeight: 600 as const }
                     return (
                       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -881,61 +883,71 @@ export default function PowerCalculatorPage() {
                           {/* Peak demand */}
                           <tr style={{ background: '#f0fdf4' }}>
                             <td style={cellStyle}>{L('Peak Demand', 'ค่ากำลังไฟฟ้า Peak')} <span style={{ fontSize: 11, color: '#047857' }}>(จ.–ศ. 09:00–22:00)</span></td>
-                            <td style={cellStyle}><input type="number" step="0.01" min="0" value={tb.peakDemand.kw || ''} placeholder="0" onChange={e => upd('peakDemand','kw',Number(e.target.value)||0)} style={inputStyle} /> <span style={{ fontSize: 11 }}>กว.</span></td>
+                            <td style={cellStyle}><div style={qtyInputWrapStyle}><input type="number" step="0.01" min="0" value={tb.peakDemand.kw || ''} placeholder="0" onChange={e => upd('peakDemand','kw',Number(e.target.value)||0)} style={inputStyle} /><span style={qtyUnitStyle}>กว.</span></div></td>
                             <td style={cellStyle}><input type="number" step="0.0001" value={tb.peakDemand.rate} onChange={e => upd('peakDemand','rate',Number(e.target.value))} style={inputStyle} /></td>
                             <td style={amtStyle}>{peakDemandAmt.toLocaleString('th-TH',{minimumFractionDigits:2})}</td>
                           </tr>
                           {/* Off-peak demand */}
                           <tr style={{ background: '#fff' }}>
                             <td style={cellStyle}>{L('Off-Peak Demand', 'ค่ากำลังไฟฟ้า Off-Peak')}</td>
-                            <td style={cellStyle}><input type="number" step="0.01" min="0" value={tb.offPeakDemand.kw || ''} placeholder="0" onChange={e => upd('offPeakDemand','kw',Number(e.target.value)||0)} style={inputStyle} /> <span style={{ fontSize: 11 }}>กว.</span></td>
+                            <td style={cellStyle}><div style={qtyInputWrapStyle}><input type="number" step="0.01" min="0" value={tb.offPeakDemand.kw || ''} placeholder="0" onChange={e => upd('offPeakDemand','kw',Number(e.target.value)||0)} style={inputStyle} /><span style={qtyUnitStyle}>กว.</span></div></td>
                             <td style={cellStyle}><input type="number" step="0.0001" value={tb.offPeakDemand.rate} onChange={e => upd('offPeakDemand','rate',Number(e.target.value))} style={inputStyle} /></td>
                             <td style={amtStyle}>{offPeakDemandAmt.toLocaleString('th-TH',{minimumFractionDigits:2})}</td>
                           </tr>
                           {/* Peak energy */}
                           <tr style={{ background: '#f0fdf4' }}>
                             <td style={cellStyle}>{L('Peak Energy', 'ค่าพลังงานไฟฟ้า Peak')}</td>
-                            <td style={cellStyle}><input type="number" step="1" min="0" value={tb.peakEnergy.kwh || ''} placeholder="0" onChange={e => upd('peakEnergy','kwh',Number(e.target.value)||0)} style={inputStyle} /> <span style={{ fontSize: 11 }}>หน่วย</span></td>
+                            <td style={cellStyle}><div style={qtyInputWrapStyle}><input type="number" step="1" min="0" value={tb.peakEnergy.kwh || ''} placeholder="0" onChange={e => upd('peakEnergy','kwh',Number(e.target.value)||0)} style={inputStyle} /><span style={qtyUnitStyle}>หน่วย</span></div></td>
                             <td style={cellStyle}><input type="number" step="0.0001" value={tb.peakEnergy.rate} onChange={e => upd('peakEnergy','rate',Number(e.target.value))} style={inputStyle} /></td>
                             <td style={amtStyle}>{peakEnergyAmt.toLocaleString('th-TH',{minimumFractionDigits:2})}</td>
                           </tr>
                           {/* Off-peak energy */}
                           <tr style={{ background: '#fff' }}>
                             <td style={cellStyle}>{L('Off-Peak Energy', 'ค่าพลังงานไฟฟ้า Off-Peak')}</td>
-                            <td style={cellStyle}><input type="number" step="1" min="0" value={tb.offPeakEnergy.kwh || ''} placeholder="0" onChange={e => upd('offPeakEnergy','kwh',Number(e.target.value)||0)} style={inputStyle} /> <span style={{ fontSize: 11 }}>หน่วย</span></td>
+                            <td style={cellStyle}><div style={qtyInputWrapStyle}><input type="number" step="1" min="0" value={tb.offPeakEnergy.kwh || ''} placeholder="0" onChange={e => upd('offPeakEnergy','kwh',Number(e.target.value)||0)} style={inputStyle} /><span style={qtyUnitStyle}>หน่วย</span></div></td>
                             <td style={cellStyle}><input type="number" step="0.0001" value={tb.offPeakEnergy.rate} onChange={e => upd('offPeakEnergy','rate',Number(e.target.value))} style={inputStyle} /></td>
                             <td style={amtStyle}>{offPeakEnergyAmt.toLocaleString('th-TH',{minimumFractionDigits:2})}</td>
                           </tr>
                           {/* Service charge */}
                           <tr style={{ background: '#f0fdf4' }}>
-                            <td style={cellStyle} colSpan={3}>{L('Service Charge / month', 'ค่าบริการรายเดือน')}</td>
+                            <td style={cellStyle}>{L('Service Charge / month', 'ค่าบริการรายเดือน')}</td>
+                            <td style={cellStyle}></td>
+                            <td style={cellStyle}></td>
                             <td style={cellStyle}><input type="number" step="0.01" value={tb.serviceCharge} onChange={e => setTouBill(prev => ({ ...prev, serviceCharge: Number(e.target.value) }))} style={inputStyle} /></td>
                           </tr>
                           {/* Based total */}
                           <tr style={{ background: '#dcfce7', fontWeight: 700 }}>
-                            <td style={cellStyle} colSpan={3}>{L('Total Based Amount', 'รวมเงินค่าไฟฟ้าฐาน')}</td>
+                            <td style={cellStyle}>{L('Total Based Amount', 'รวมเงินค่าไฟฟ้าฐาน')}</td>
+                            <td style={cellStyle}></td>
+                            <td style={cellStyle}></td>
                             <td style={amtStyle}>{basedTotal.toLocaleString('th-TH',{minimumFractionDigits:2})}</td>
                           </tr>
                           {/* FT */}
                           <tr style={{ background: '#fff' }}>
                             <td style={cellStyle}>FT ({totalKwhTou.toLocaleString()} {L('units','หน่วย')} × {ftRate} ฿)</td>
-                            <td style={cellStyle} colSpan={2}></td>
+                            <td style={cellStyle}></td>
+                            <td style={cellStyle}></td>
                             <td style={amtStyle}>{ftAmt.toLocaleString('th-TH',{minimumFractionDigits:2})}</td>
                           </tr>
                           {/* VAT */}
                           <tr style={{ background: '#f0fdf4' }}>
                             <td style={cellStyle}>VAT 7%</td>
-                            <td style={cellStyle} colSpan={2}></td>
+                            <td style={cellStyle}></td>
+                            <td style={cellStyle}></td>
                             <td style={amtStyle}>{vatAmt.toLocaleString('th-TH',{minimumFractionDigits:2})}</td>
                           </tr>
                           {/* Grand total */}
                           <tr style={{ background: '#065f46', color: '#fff', fontWeight: 700 }}>
-                            <td style={{ ...cellStyle, border: '1px solid #047857' }} colSpan={3}>{L('Grand Total', 'รวมทั้งสิ้น')}</td>
+                            <td style={{ ...cellStyle, border: '1px solid #047857' }}>{L('Grand Total', 'รวมทั้งสิ้น')}</td>
+                            <td style={{ ...cellStyle, border: '1px solid #047857' }}></td>
+                            <td style={{ ...cellStyle, border: '1px solid #047857' }}></td>
                             <td style={{ ...cellStyle, border: '1px solid #047857', textAlign: 'right', fontSize: 15 }}>{grandTotal.toLocaleString('th-TH',{minimumFractionDigits:2})} ฿</td>
                           </tr>
                           {totalKwhTou > 0 && (
                             <tr style={{ background: '#f8fafc' }}>
-                              <td style={cellStyle} colSpan={3} >{L('Effective rate (Grand Total / total units)', 'อัตราจริง (ยอดรวม / หน่วยรวม)')}</td>
+                              <td style={cellStyle}>{L('Effective rate (Grand Total / total units)', 'อัตราจริง (ยอดรวม / หน่วยรวม)')}</td>
+                              <td style={cellStyle}></td>
+                              <td style={cellStyle}></td>
                               <td style={amtStyle}>{(grandTotal / totalKwhTou).toFixed(4)} ฿/{L('unit','หน่วย')}</td>
                             </tr>
                           )}
