@@ -82,12 +82,12 @@ function StatusCell({ current, apiPath, rowId, onUpdate, rowIdKey, editable = tr
 
   if (!editing) {
     const b = badgeFor(current)
-    const isDraft = current === 'draft' || current === 'Draft'
+    const isDraftInvoice = apiPath?.includes('/invoices') && (current === 'draft' || current === 'Draft')
     return (
       <td>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <span style={{ padding: '4px 10px', borderRadius: 12, fontSize: 12, fontWeight: 600, color: b.color, background: b.bg }}>{b.label}</span>
-          {editable && !isDraft && <button onClick={() => setEditing(true)} style={{ padding: '6px 8px', borderRadius: 6, background: '#fff', border: '1px solid #e6eef0' }}>Edit</button>}
+          {editable && !isDraftInvoice && <button onClick={() => setEditing(true)} style={{ padding: '6px 8px', borderRadius: 6, background: '#fff', border: '1px solid #e6eef0' }}>Edit</button>}
         </div>
       </td>
     )
@@ -858,11 +858,11 @@ export default function ListPage({ title, apiPath, createPath, columns, link, pr
                           const idKey2 = p?.idKey || p?.paramName || columns[0].key
                           const val2 = r?.[idKey2] ?? r?.[p?.paramName] ?? r?.[columns[0].key]
                           const already = val2 ? (invoiceHasReceipt[val2] || (r && (r.status === 'paid' || r.status === 'Paid'))) : false
-                          const isDraft = r && (r.status === 'draft' || r.status === 'Draft')
+                          const isDraft = apiPath?.includes('/invoices') && r && (r.status === 'draft' || r.status === 'Draft')
 
                           if (already || isDraft) {
                             const disabledTitle = isDraft
-                              ? T('Cannot print draft - please complete first', 'ไม่สามารถพิมพ์ร่างได้ - กรุณาทำให้เสร็จก่อน')
+                              ? T('Cannot print draft invoice - please complete first', 'ไม่สามารถพิมพ์ร่างใบแจ้งหนี้ได้ - กรุณาทำให้เสร็จก่อน')
                               : T('Invoice already used to create receipt', 'ใบแจ้งหนี้ถูกใช้สร้างใบเสร็จแล้ว')
                             return (
                               <button disabled title={disabledTitle} aria-label="Print disabled" style={{ padding: 4, width: 40, height: 40, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: 'none', background: 'transparent', opacity: 0.4, cursor: 'not-allowed' }}>

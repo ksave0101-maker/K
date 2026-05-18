@@ -36,18 +36,19 @@ export default function Page() {
 
   return (
     <ListPage
-      title="Korea HQ Invoices for Thailand"
-      apiPath="/api/korea-invoices?branch=thailand&status=all"
-      createPath="/KR-Thailand/Admin-Login/invoices/create"
+      title="Invoices"
+      apiPath="/api/invoices"
+      createPath="/KR-Thailand/Admin-Login/invoice"
       columns={[
-        { key: 'invoiceNumber', label: 'Invoice No' },
-        { key: 'issueDate', label: 'Issue Date' },
-        { key: 'dueDate', label: 'Due Date' },
-        { key: 'totalAmount', label: 'Total (USD)' },
-        { key: 'paymentStatus', label: 'Status' }
+        { key: 'invNo', label: 'Invoice No' },
+        { key: 'customer_name', label: 'Customer' },
+        { key: 'total_amount', label: 'Total' },
+        { key: 'status', label: 'Status' },
+        { key: 'invDate', label: 'Date' },
+        { key: 'created_at', label: 'Created' }
       ]}
-      print={{ path: '/Korea/Admin-Login/invoices/print', paramName: 'id', idKey: 'id', newTab: true }}
-      link={{ columnKey: 'invoiceNumber', path: '/Korea/Admin-Login/invoices/print', paramName: 'id', idKey: 'id' }}
+      print={{ path: '/KR-Thailand/Admin-Login/invoice/print', paramName: 'invNo', idKey: 'invNo', newTab: true }}
+      link={{ columnKey: 'invNo', path: '/KR-Thailand/Admin-Login/invoice', paramName: 'invNo' }}
       selectable={selectMode}
     />
   )

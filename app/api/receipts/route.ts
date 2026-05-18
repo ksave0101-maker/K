@@ -139,6 +139,74 @@ export async function GET(request: NextRequest) {
   }
 }
 
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { invNo, receiptNo, receiptDate, receipts, created_by } = body
+
+    if (!receiptNo) {
+      return NextResponse.json({ success: false, error: 'receiptNo is required' }, { status: 400 })
+    }
+    if (!Array.isArray(receipts) || receipts.length === 0) {
+      return NextResponse.json({ success: false, error: 'receipts array is required' }, { status: 400 })
+    }
+
+    // Resolve invID from invNo if provided
+    let invID: number | null = null
+    if (invNo) {
+      const [invRows]: any = await pool.query(
+        'SELECT invID FROM invoices WHERE invNo = ? LIMIT 1',
+        [invNo]
+      )
+      if (invRows && invRows.length > 0) invID = invRows[0].invID
+    }
+
+    // Parse created_by — extract name if stored as JSON
+    let createdByName: string | null = null
+    try {
+      if (created_by) {
+        const u = typeof created_by === 'string' && created_by.startsWith('{')
+          ? JSON.parse(created_by)
+          : null
+        createdByName = u ? (u.fullname || u.name || u.username || String(u.userId || '')) : String(created_by)
+      }
+    } catch { createdByName = String(created_by || '') }
+
+    const saved: any[] = []
+    for (const r of receipts) {
+      const [result]: any = await pool.query(
+        `INSERT INTO receipts (receiptNo, receiptDate, invID, amount, amount_out, payment_method, notes, created_by, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+        [
+          r.receiptNo || receiptNo,
+          r.date || receiptDate || null,
+          invID,
+          Number(r.amount) || 0,
+          r.amount_out != null ? String(r.amount_out) : null,
+          r.method || null,
+          r.reference || null,
+          createdByName
+        ]
+      )
+      saved.push({ receiptID: result.insertId, receiptNo: r.receiptNo || receiptNo, receiptDate: r.date || receiptDate })
+    }
+
+    // Mark invoice as paid if outstanding is 0
+    if (invID) {
+      const lastRecord = receipts[receipts.length - 1]
+      if (lastRecord && Number(lastRecord.amount_out) === 0) {
+        await pool.query(`UPDATE invoices SET status = 'paid' WHERE invID = ?`, [invID])
+      }
+    }
+
+    return NextResponse.json({ success: true, receipts: saved })
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error'
+    console.error('Receipts POST error:', error)
+    return NextResponse.json({ success: false, error: message }, { status: 500 })
+  }
+}
+
 export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json()

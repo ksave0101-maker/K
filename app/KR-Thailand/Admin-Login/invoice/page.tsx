@@ -61,25 +61,21 @@ export default function InvoicePage() {
   const [paymentTerms, setPaymentTerms] = useState({ cash: false, bankTransfer: false, credit30: false, check: false, other: false })
   const [paymentOtherText, setPaymentOtherText] = useState('')
   const [paymentBank, setPaymentBank] = useState<string | null>(null)
-  const bankAccounts = [
-    { id: 'bank-a', bank: 'Bank A', account: '123-456-7890', name: 'Company Ltd.' },
-    { id: 'bank-b', bank: 'Bank B', account: '987-654-3210', name: 'Company Ltd.' }
-  ]
   const [salesOrderNo, setSalesOrderNo] = useState('')
   const [salesOrderSearchResults, setSalesOrderSearchResults] = useState<SalesOrderSummary[] | null>(null)
   const [showSalesOrderSearchModal, setShowSalesOrderSearchModal] = useState(false)
   const [salesOrderSearchTerm, setSalesOrderSearchTerm] = useState('')
 
-  const [locale, setLocale] = useState<'en'|'th'>(() => {
-    try {
-      const l = localStorage.getItem('locale') || localStorage.getItem('k_system_lang')
-      return l === 'th' ? 'th' : 'en'
-    } catch { return 'th' }
-  })
+  const [locale, setLocale] = useState<'en'|'th'>('th')
 
   const router = useRouter()
 
   useEffect(() => {
+    try {
+      const l = localStorage.getItem('locale') || localStorage.getItem('k_system_lang')
+      if (l === 'en' || l === 'th') setLocale(l)
+    } catch { }
+
     const handler = (e: Event) => {
       const d = (e as CustomEvent<LocaleChangeDetail | string>).detail
       const v = typeof d === 'string' ? d : d?.locale
@@ -94,6 +90,11 @@ export default function InvoicePage() {
   }, [])
 
   const L = (en: string, th: string) => locale === 'th' ? th : en
+
+  const bankAccounts = [
+    { id: 'bank-kbank-current', bank: L('Kasikorn Bank (KBANK) — Current Account', 'ธนาคารกสิกรไทย — บัญชีกระแสรายวัน'), account: '212-1-17253-7', name: L('K Energy Save Co., Ltd.', 'บริษัท เค อีเนอร์ยี่ เซฟ จำกัด') },
+    { id: 'bank-kbank-savings', bank: L('Kasikorn Bank (KBANK) — Savings Account', 'ธนาคารกสิกรไทย — บัญชีออมทรัพย์'), account: '211-8-78336-3', name: L('K Energy Save Co., Ltd.', 'บริษัท เค อีเนอร์ยี่ เซฟ จำกัด') },
+  ]
 
   // Load initial invoice number
   useEffect(() => {
@@ -446,6 +447,7 @@ export default function InvoicePage() {
                         <input
                           type="number"
                           min={1}
+                          step="any"
                           value={it.qty}
                           onChange={e => updateItem(i, 'qty', e.target.value)}
                           className={styles.formInput}
@@ -456,6 +458,7 @@ export default function InvoicePage() {
                         <input
                           type="number"
                           min={0}
+                          step="any"
                           value={it.price}
                           onChange={e => updateItem(i, 'price', e.target.value)}
                           className={styles.formInput}

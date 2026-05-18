@@ -142,36 +142,60 @@ function ReceiptPrintPageContent() {
                 
     return (<>
       <style>{`
-        .info-box-title { font-weight: 700; font-size: 10pt; color: #0066cc; margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid #ddd; }
-        .info-row { display: flex; margin-bottom: 4px; font-size: 10pt; }
-        .info-label { width: 100px; font-weight: 600; color: #555; }
+        /* ── compact A4 override: fit everything on one page ── */
+        .a4-page { padding: 8mm 10mm !important; padding-bottom: 14mm !important; font-size: 9pt; }
+        @page { margin: 8mm 10mm; }
+
+        /* header */
+        .header-row { margin-bottom: 6px !important; padding-bottom: 6px !important; }
+        .company-name { font-size: 13pt !important; }
+        .company-name-en { font-size: 9pt !important; }
+        .company-address { font-size: 8pt !important; }
+
+        /* info boxes */
+        .info-section { gap: 10px !important; margin-bottom: 8px !important; }
+        .info-box { padding: 6px 8px !important; }
+        .info-box-title { font-size: 8pt !important; margin-bottom: 4px !important; padding-bottom: 2px !important; font-weight: 700; color: #0066cc; border-bottom: 1px solid #ddd; }
+        .info-row { margin-bottom: 2px !important; font-size: 8.5pt !important; }
+        .info-label { width: 85px !important; font-weight: 600; color: #555; }
         .info-value { flex: 1; color: #333; }
-        .items-table { width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 10pt; }
-        .items-table th { background: #0066cc; color: white; padding: 8px 10px; text-align: left; font-weight: 600; }
-        .items-table th:nth-child(1) { width: 40px; text-align: center; }
-        .items-table th:nth-child(3) { width: 70px; text-align: right; }
-        .items-table th:nth-child(4) { width: 100px; text-align: right; }
-        .items-table th:nth-child(5) { width: 110px; text-align: right; }
-        .items-table td { padding: 8px 10px; border-bottom: 1px solid #eee; }
+
+        /* items table */
+        .items-table { margin-bottom: 8px !important; font-size: 8.5pt !important; }
+        .items-table th { padding: 4px 6px !important; background: #0066cc; color: white; font-weight: 600; }
+        .items-table th:nth-child(1) { width: 32px; text-align: center; }
+        .items-table th:nth-child(3) { width: 50px; text-align: right; }
+        .items-table th:nth-child(4) { width: 85px; text-align: right; }
+        .items-table th:nth-child(5) { width: 90px; text-align: right; }
+        .items-table td { padding: 4px 6px !important; border-bottom: 1px solid #eee; }
         .items-table td:nth-child(1) { text-align: center; }
         .items-table td:nth-child(3), .items-table td:nth-child(4), .items-table td:nth-child(5) { text-align: right; }
         .items-table tbody tr:nth-child(even) { background: #f9f9f9; }
-        .summary-section { display: flex; justify-content: flex-end; margin-bottom: 20px; }
-        .summary-table { width: 280px; font-size: 10pt; }
-        .summary-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #eee; }
-        .summary-row.total { font-weight: 700; font-size: 12pt; color: #0066cc; border-top: 2px solid #0066cc; border-bottom: none; padding-top: 10px; margin-top: 4px; }
-        .payment-section { border: 1px solid #ddd; border-radius: 6px; padding: 12px; margin-bottom: 20px; background: #f8fafc; }
-        .payment-title { font-weight: 700; font-size: 10pt; color: #0066cc; margin-bottom: 10px; }
-        .payment-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; font-size: 10pt; }
+
+        /* summary */
+        .summary-section { margin-bottom: 8px !important; }
+        .summary-table { width: 240px !important; font-size: 8.5pt !important; }
+        .summary-row { padding: 3px 0 !important; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; }
+        .summary-row.total { font-weight: 700; font-size: 10pt !important; color: #0066cc; border-top: 2px solid #0066cc; border-bottom: none; padding-top: 6px !important; margin-top: 2px !important; }
+
+        /* payment section */
+        .payment-section { padding: 6px 8px !important; margin-bottom: 8px !important; border: 1px solid #ddd; border-radius: 4px; background: #f8fafc; }
+        .payment-title { font-size: 8.5pt !important; margin-bottom: 4px !important; font-weight: 700; color: #0066cc; }
+        .payment-grid { gap: 4px !important; font-size: 8.5pt !important; display: grid; grid-template-columns: repeat(2, 1fr); }
         .payment-item { display: flex; }
-        .payment-label { font-weight: 600; color: #555; min-width: 120px; }
-        .signature-section { display: flex; justify-content: space-between; margin-top: 30px; padding-top: 20px; }
+        .payment-label { font-weight: 600; color: #555; min-width: 100px !important; }
+
+        /* signature */
+        .signature-section { margin-top: 10px !important; padding-top: 8px !important; display: flex; justify-content: space-between; }
         .signature-box { width: 30%; text-align: center; }
-        .signature-line { border-bottom: 1px solid #333; height: 40px; margin-bottom: 8px; }
-        .signature-label { font-size: 10pt; font-weight: 600; color: #333; }
-        .signature-sublabel { font-size: 9pt; color: #666; }
-        .footer-info { position: absolute; bottom: 10mm; left: 15mm; right: 15mm; display: flex; justify-content: space-between; font-size: 8pt; color: #999; border-top: 1px solid #eee; padding-top: 8px; }
-        @media print { .no-print { display: none !important } body { margin:0; padding:0 } }
+        .signature-line { height: 28px !important; border-bottom: 1px solid #333; margin-bottom: 4px !important; }
+        .signature-label { font-size: 8.5pt !important; font-weight: 600; color: #333; }
+        .signature-sublabel { font-size: 8pt !important; color: #666; }
+
+        /* footer */
+        .footer-info { bottom: 4mm !important; left: 10mm !important; right: 10mm !important; font-size: 7pt !important; position: absolute; display: flex; justify-content: space-between; color: #999; border-top: 1px solid #eee; padding-top: 4px; }
+
+        @media print { .no-print { display: none !important; } body { margin: 0; padding: 0; } }
       `}</style>
 
       {/* Language Toggle */}
@@ -194,9 +218,9 @@ function ReceiptPrintPageContent() {
       {/* A4 Page */}
       <div className="a4-page">
         {/* Title centered */}
-        <div style={{ textAlign: 'center', marginBottom: 12 }}>
-          <h1 style={{ margin: 0 }}>{L('RECEIPT', 'ใบเสร็จรับเงิน')}</h1>
-          <h2 style={{ margin: '6px 0 0 0' }}>{L('Payment Receipt', 'หลักฐานการรับชำระเงิน')}</h2>
+        <div style={{ textAlign: 'center', marginBottom: 6 }}>
+          <h1 style={{ margin: 0, fontSize: '16pt' }}>{L('RECEIPT', 'ใบเสร็จรับเงิน')}</h1>
+          <h2 style={{ margin: '2px 0 0 0', fontSize: '11pt', color: '#555', fontWeight: 500 }}>{L('Payment Receipt', 'หลักฐานการรับชำระเงิน')}</h2>
         </div>
 
         {/* Header - company info below the title */}
@@ -368,18 +392,6 @@ function ReceiptPrintPageContent() {
         </div>
 
         {/* Footer */}
-
-        <div style={{ marginTop: 20, padding: '12px 16px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6 }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: '#16a34a', marginBottom: 8 }}>
-            {L('Bank Account Information', 'ข้อมูลบัญชีธนาคาร')}
-          </div>
-          <div style={{ fontSize: 9, lineHeight: 1.6, color: '#334155' }}>
-            <div><strong>{L('Bank:', 'ธนาคาร:')}</strong> {L('Kasikorn Bank (KBANK)', 'ธนาคารกสิกรไทย')}</div>
-            <div><strong>{L('Current Account:', 'บัญชีกระแสรายวัน:')}</strong> 212-1-17253-7</div>
-            <div><strong>{L('Savings Account:', 'บัญชีออมทรัพย์:')}</strong> 211-8-78336-3</div>
-            <div><strong>{L('Account Name:', 'ชื่อบัญชี:')}</strong> {L('K Energy Save Co., Ltd.', 'บริษัท เค อีเนอร์ยี่ เซฟ จำกัด')}</div>
-          </div>
-        </div>
 
         <div className="footer-info">
           <span style={{ opacity: 0.9 }}>{L('User:', 'ผู้พิมพ์:')} {loggedUser || '-'}</span>

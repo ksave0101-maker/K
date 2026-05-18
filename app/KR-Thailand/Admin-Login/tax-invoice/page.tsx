@@ -34,7 +34,7 @@ export default function TaxInvoicePage() {
   const searchParams = useSearchParams()
   const printRef = useRef<HTMLDivElement>(null)
   const [taxInvoiceNo, setTaxInvoiceNo] = useState('')
-  const [taxInvoiceCompact, setTaxInvoiceCompact] = useState<string | null>(null)
+
   const [invoiceDate, setInvoiceDate] = useState(() => new Date().toISOString().split('T')[0])
   const [customer, setCustomer] = useState<Customer>({ name: '', address: '', taxId: '', phone: '', branch: '' })
   const [items, setItems] = useState<Item[]>([{ desc: '', qty: 1, unitPrice: 0 }])
@@ -43,11 +43,11 @@ export default function TaxInvoicePage() {
   const [customers, setCustomers] = useState<any[]>([])
   const [selectedCusId, setSelectedCusId] = useState<string | null>(null)
   const [sourceInvNo, setSourceInvNo] = useState<string | null>(null)
-  const [sourceReceiptNo, setSourceReceiptNo] = useState<string | null>(null)
   const [showReceiptModal, setShowReceiptModal] = useState(false)
   const [receipts, setReceipts] = useState<any[] | null>(null)
   const [receiptsLoading, setReceiptsLoading] = useState(false)
   const [receiptsUsed, setReceiptsUsed] = useState<Record<string, boolean>>({})
+  const [invSearchTerm, setInvSearchTerm] = useState('')
 
   const [locale, setLocale] = useState<'en'|'th'>(() => {
     try {
@@ -95,8 +95,6 @@ export default function TaxInvoicePage() {
       if (pre) {
         setTaxInvoiceNo(pre)
         try { localStorage.removeItem('k_system_next_tivNo') } catch (_) {}
-        // set compact to null (server provides compact when using tiv-seq)
-        setTaxInvoiceCompact(null)
         // set today's date as invoice date
         setInvoiceDate(new Date().toISOString().split('T')[0])
         return
@@ -191,7 +189,6 @@ export default function TaxInvoicePage() {
       const j = await res.json()
       if (res.ok && j && j.success) {
         setTaxInvoiceNo(j.formatted)
-        setTaxInvoiceCompact(j.compact)
       } else {
         console.warn('tiv-seq failed, falling back to random')
         const today = new Date()
@@ -200,7 +197,7 @@ export default function TaxInvoicePage() {
         const prefix = `TIV-${year}${month}-`
         const seq = String(Math.floor(Math.random() * 9999) + 1).padStart(4, '0')
         setTaxInvoiceNo(prefix + seq)
-        setTaxInvoiceCompact(null)
+
       }
       // Also update date to today
       setInvoiceDate(new Date().toISOString().split('T')[0])
@@ -294,7 +291,14 @@ export default function TaxInvoicePage() {
     setLoading(true)
     ;(async () => {
       const token = typeof window !== 'undefined' ? (localStorage.getItem('k_system_admin_token') || '') : ''
-      const createdBy = typeof window !== 'undefined' ? (localStorage.getItem('k_system_admin_user') || 'thailand admin') : 'thailand admin'
+      let createdBy = 'thailand admin'
+      try {
+        const raw = localStorage.getItem('k_system_admin_user')
+        if (raw) {
+          const u = JSON.parse(raw)
+          createdBy = u.fullname || u.name || u.username || String(u.userId || '') || 'thailand admin'
+        }
+      } catch { }
 
       const attemptSave = async () => {
         try {
@@ -309,7 +313,6 @@ export default function TaxInvoicePage() {
             total_amount: Number(grandTotal || 0),
             notes: null,
             source_invNo: sourceInvNo,
-            source_receiptNo: sourceReceiptNo,
             created_by: createdBy
           }
           const res = await fetch('/api/tax-invoices', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(payload) })
@@ -361,17 +364,6 @@ export default function TaxInvoicePage() {
 
   const fmtNumber = (n: number) => n.toLocaleString(locale === 'th' ? 'th-TH' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-  const parseAmount = (v: any) => {
-    try {
-      if (v === null || v === undefined) return 0
-      const s = String(v)
-      // remove any non-numeric except dot and minus
-      const cleaned = s.replace(/[^0-9.-]+/g, '')
-      const n = parseFloat(cleaned)
-      return Number.isFinite(n) ? n : 0
-    } catch (e) { return 0 }
-  }
-
   return (
     <AdminLayout title="Tax Invoice" titleTh="ใบกำกับภาษี">
       <div className={styles.contentCard}>
@@ -392,152 +384,114 @@ export default function TaxInvoicePage() {
 
         <div className={styles.cardBody}>
           <form onSubmit={handleSave}>
-            {/* Import from Receipt */}
+            {/* Import from Invoice */}
             <div style={{ marginBottom: 16, padding: 12, background: '#f0f9ff', borderRadius: 8, border: '1px solid #bae6fd' }}>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                <span style={{ fontWeight: 600, color: '#0369a1' }}>{L('Import from Receipt:', 'นำเข้าจากใบเสร็จรับเงิน:')}</span>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <span style={{ fontWeight: 600, color: '#0369a1' }}>{L('Import from Invoice:', 'นำเข้าจากใบแจ้งหนี้:')}</span>
                 <button type="button" className={styles.btnOutline} onClick={async () => {
-                  // open modal and (re)load recent receipts to ensure up-to-date status
                   setShowReceiptModal(true)
+                  setInvSearchTerm('')
                   try {
                     setReceiptsLoading(true)
-                    const res = await fetch('/api/receipts?limit=100')
+                    const res = await fetch('/api/invoices?limit=200')
                     const j = await res.json()
-                    if (!res.ok || !j.success) {
-                      setReceipts([])
-                      setReceiptsUsed({})
-                    } else {
-                      const list = j.receipts || j.list || []
-                      // check which receipts already have tax invoices
-                      const map: Record<string, boolean> = {}
-                      await Promise.all(list.map(async (rr: any) => {
-                        const rno = rr.receiptNo || rr.receipt_no || rr.receiptID || rr.id
-                        if (!rno) return
-                        try {
-                          const chk = await fetch(`/api/tax-invoices?source_receiptNo=${encodeURIComponent(rno)}`)
-                          const cj = await chk.json().catch(() => null)
-                          map[String(rno)] = !!(chk.ok && cj && cj.success && cj.found)
-                        } catch (e) { map[String(rno)] = false }
-                      }))
-                      setReceiptsUsed(map)
-                      // show only receipts that are not yet used to create a tax invoice
-                      const available = list.filter((rr: any) => {
-                        const rno = rr.receiptNo || rr.receipt_no || rr.receiptID || rr.id
-                        return !(rno && map[String(rno)])
-                      })
-                      setReceipts(available)
-                    }
+                    setReceipts(res.ok && j?.success ? (j.rows || []) : [])
                   } catch (e) {
-                    console.error('Failed to load receipts', e)
+                    console.error('Failed to load invoices', e)
                     setReceipts([])
                   } finally { setReceiptsLoading(false) }
-                }}>{L('Import from Receipt', 'นำเข้าจากใบเสร็จ')}</button>
+                }}>{L('Import from Invoice', 'นำเข้าจากใบแจ้งหนี้')}</button>
               </div>
             </div>
 
-            {/* Receipt Selection Modal */}
+            {/* Invoice Selection Modal */}
             {showReceiptModal && (
               <div style={{ position: 'fixed', left: 0, top: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.4)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <div style={{ width: '90%', maxWidth: 900, background: 'white', borderRadius: 8, padding: 16, boxShadow: '0 6px 24px rgba(0,0,0,0.2)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                    <div style={{ fontWeight: 700 }}>{L('Select Receipt to import', 'เลือกใบเสร็จเพื่อนำเข้า')}</div>
-                    <div>
-                      <button className={styles.btnOutline} onClick={() => { setShowReceiptModal(false) }}>{L('Close', 'ปิด')}</button>
-                    </div>
+                    <div style={{ fontWeight: 700 }}>{L('Select Invoice to import', 'เลือกใบแจ้งหนี้เพื่อนำเข้า')}</div>
+                    <button className={styles.btnOutline} onClick={() => setShowReceiptModal(false)}>✕</button>
                   </div>
-                  <div style={{ maxHeight: '60vh', overflow: 'auto' }}>
+                  <input
+                    placeholder={L('Search by invoice no or customer', 'ค้นหาด้วยเลขที่หรือชื่อลูกค้า')}
+                    value={invSearchTerm}
+                    onChange={e => setInvSearchTerm(e.target.value)}
+                    style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #ddd', marginBottom: 10, fontSize: 13 }}
+                  />
+                  <div style={{ maxHeight: '55vh', overflow: 'auto' }}>
                     <table className={styles.table}>
                       <thead>
-                                <tr>
-                                  <th>{L('Receipt No', 'เลขที่ใบเสร็จ')}</th>
-                                  <th>{L('Date', 'วันที่')}</th>
-                                  <th>{L('Invoice No', 'เลขที่ใบแจ้งหนี้')}</th>
-                                  <th style={{ textAlign: 'right' }}>{L('Amount', 'จำนวนเงิน')}</th>
-                                  <th style={{ textAlign: 'center' }}>{L('Status','สถานะ')}</th>
-                                  <th style={{ width: 120 }}>{L('Action', 'การกระทำ')}</th>
-                                </tr>
+                        <tr>
+                          <th>{L('Invoice No', 'เลขที่ใบแจ้งหนี้')}</th>
+                          <th>{L('Customer', 'ลูกค้า')}</th>
+                          <th>{L('Date', 'วันที่')}</th>
+                          <th style={{ textAlign: 'right' }}>{L('Total', 'ยอดรวม')}</th>
+                          <th style={{ textAlign: 'center' }}>{L('Tax Invoice', 'ใบกำกับภาษี')}</th>
+                          <th style={{ width: 100 }}>{L('Action', 'การกระทำ')}</th>
+                        </tr>
                       </thead>
                       <tbody>
                         {receiptsLoading && (
-                          <tr><td colSpan={5} style={{ padding: 20, textAlign: 'center' }}>{L('Loading...', 'กำลังโหลด...')}</td></tr>
+                          <tr><td colSpan={6} style={{ padding: 20, textAlign: 'center' }}>{L('Loading...', 'กำลังโหลด...')}</td></tr>
                         )}
                         {(!receiptsLoading && Array.isArray(receipts) && receipts.length === 0) && (
-                          <tr><td colSpan={5} style={{ padding: 20, textAlign: 'center' }}>{L('No receipts found', 'ไม่พบใบเสร็จ')}</td></tr>
+                          <tr><td colSpan={6} style={{ padding: 20, textAlign: 'center' }}>{L('No invoices found', 'ไม่พบใบแจ้งหนี้')}</td></tr>
                         )}
-                        {Array.isArray(receipts) && receipts.map((r: any) => {
-                          const key = r.receiptNo || r.receiptID || r.id || ''
-                          const used = !!(key && (receiptsUsed[String(key)] || (sourceReceiptNo && String(sourceReceiptNo) === String(key))))
+                        {Array.isArray(receipts) && receipts.filter((inv: any) => {
+                          if (!invSearchTerm) return true
+                          const q = invSearchTerm.toLowerCase()
+                          return (inv.invNo || '').toLowerCase().includes(q) || (inv.customer_name || '').toLowerCase().includes(q)
+                        }).map((inv: any) => {
+                          const key = inv.invNo || inv.id || ''
+                          const used = !!(key && receiptsUsed[String(key)])
                           return (
-                            <tr key={key || Math.random()}>
-                              <td style={{ fontWeight: 600 }}>{r.receiptNo || '-'}</td>
-                              <td style={{ fontSize: 13, color: '#666' }}>{r.receiptDate ? new Date(r.receiptDate).toLocaleDateString() : '-'}</td>
-                              <td>{r.invNo || r.invoice_no || r.invoiceNo || '-'}</td>
-                              <td style={{ textAlign: 'right' }}>{Number(r.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <tr key={key}>
+                              <td style={{ fontWeight: 600 }}>{inv.invNo || '-'}</td>
+                              <td>{inv.customer_name || '-'}</td>
+                              <td style={{ fontSize: 13, color: '#666' }}>{inv.invDate ? new Date(inv.invDate).toLocaleDateString() : '-'}</td>
+                              <td style={{ textAlign: 'right' }}>{Number(inv.total_amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                               <td style={{ textAlign: 'center' }}>
-                                {used ? <span style={{ color: '#b91c1c', fontWeight: 700 }}>{L('Already used','ใช้ไปแล้ว')}</span> : <span style={{ color: '#16a34a', fontWeight: 700 }}>{L('Available','ยังไม่ใช้')}</span>}
+                                {used
+                                  ? <span style={{ color: '#b91c1c', fontWeight: 700 }}>{L('Issued', 'ออกแล้ว')}</span>
+                                  : <span style={{ color: '#16a34a', fontWeight: 700 }}>{L('Not yet', 'ยังไม่ออก')}</span>}
                               </td>
                               <td style={{ textAlign: 'center' }}>
-                                <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={async () => {
-                                  if (used) return alert(L('This receipt already has a tax invoice', 'ใบเสร็จนี้ออกใบกำกับภาษีแล้ว'))
+                                <button className={`${styles.btn} ${styles.btnPrimary}`} disabled={used} onClick={async () => {
+                                  if (used) return alert(L('This invoice already has a tax invoice', 'ใบแจ้งหนี้นี้ออกใบกำกับภาษีแล้ว'))
                                   try {
-                                    let receipt = r
-                                    if (!r.amount || !r.receiptID) {
-                                      const rr = await fetch(`/api/receipts?receiptNo=${encodeURIComponent(r.receiptNo)}`)
-                                      const rj = await rr.json()
-                                      if (rr.ok && rj && rj.success) receipt = rj.receipt || (rj.receipts && rj.receipts[0]) || receipt
+                                    // Fetch full invoice with items
+                                    const res = await fetch(`/api/invoices?invNo=${encodeURIComponent(inv.invNo)}`)
+                                    const j = await res.json()
+                                    if (!res.ok || !j.success || !j.invoice) {
+                                      alert(L('Failed to load invoice', 'โหลดใบแจ้งหนี้ไม่สำเร็จ'))
+                                      return
                                     }
-                                    // Treat receipt amount as VAT-inclusive (grand total).
-                                    // Derive subtotal = amount / (1 + vatRate/100) so VAT is not added on top.
-                                    const importedAmount = parseAmount(receipt.amount)
-                                    const baseAmount = Math.round((importedAmount / (1 + (vatRate / 100))) * 100) / 100
-                                    setItems([
-                                      {
-                                        desc: L('Payment as per Receipt ', 'ชำระเงินตามใบเสร็จ ') + (receipt.receiptNo || ''),
-                                        qty: 1,
-                                        unitPrice: baseAmount
-                                      }
-                                    ])
-                                    setSourceReceiptNo(receipt.receiptNo || null)
-                                    const invNoFromReceipt = receipt.invNo || receipt.invoice_no || receipt.invoiceNo || null
-                                    if (invNoFromReceipt) {
-                                      setSourceInvNo(invNoFromReceipt)
-                                      try {
-                                        const invRes = await fetch(`/api/invoices?invNo=${encodeURIComponent(invNoFromReceipt)}`)
-                                        const invJ = await invRes.json()
-                                        if (invRes.ok && invJ && invJ.success && invJ.invoice) {
-                                          const inv = invJ.invoice
-                                          if (inv.cusID) {
-                                            const cusRes = await fetch(`/api/customers?id=${encodeURIComponent(inv.cusID)}`)
-                                            const cusJ = await cusRes.json()
-                                            if (cusRes.ok && cusJ && cusJ.success && cusJ.customer) {
-                                              const cu = cusJ.customer
-                                              setCustomer({ name: cu.fullname || cu.name || '', address: cu.address || '', taxId: cu.tax_id || '', phone: cu.phone || '', branch: cu.branch || '' })
-                                            } else {
-                                              setCustomer(prev => ({ ...prev, name: inv.customer_name || prev.name }))
-                                            }
-                                          } else {
-                                            setCustomer(prev => ({ ...prev, name: inv.customer_name || prev.name }))
-                                          }
-                                        }
-                                      } catch (e) { console.error('Failed to load invoice/customer', e) }
+                                    const full = j.invoice
+                                    // Map invoice items
+                                    const mapped = Array.isArray(full.items) && full.items.length > 0
+                                      ? full.items.map((it: any) => ({
+                                          desc: it.item_desc || it.description || it.desc || it.product_name || '',
+                                          qty: Number(it.quantity || it.qty || 1),
+                                          unitPrice: Number(it.unit_price || it.unitPrice || it.price || 0)
+                                        }))
+                                      : [{ desc: L('As per Invoice ', 'ตามใบแจ้งหนี้ ') + full.invNo, qty: 1, unitPrice: Number(full.subtotal || 0) }]
+                                    setItems(mapped)
+                                    setSourceInvNo(full.invNo || null)
+                                    // Set customer
+                                    setCustomer(prev => ({ ...prev, name: full.customer_name || prev.name }))
+                                    if (full.invDate) {
+                                      try { setInvoiceDate(new Date(full.invDate).toISOString().split('T')[0]) } catch { }
                                     }
-                                    // mark this receipt as used locally and remove from the shown list
-                                    const rkey = receipt.receiptNo || receipt.receiptID || receipt.id || ''
-                                    if (rkey) {
-                                      setReceiptsUsed(prev => ({ ...(prev || {}), [String(rkey)]: true }))
-                                      setReceipts(prev => Array.isArray(prev) ? prev.filter(rr => {
-                                        const rrk = rr.receiptNo || rr.receiptID || rr.id || ''
-                                        return String(rrk) !== String(rkey)
-                                      }) : prev)
-                                    }
-                                    alert(L('Receipt imported to tax invoice', 'นำเข้าใบเสร็จไปยังใบกำกับภาษีเรียบร้อย'))
+                                    // Mark as used locally
+                                    setReceiptsUsed(prev => ({ ...prev, [String(key)]: true }))
+                                    alert(L('Invoice imported', 'นำเข้าใบแจ้งหนี้เรียบร้อย'))
                                   } catch (e) {
                                     console.error(e)
-                                    alert(L('Failed to import receipt', 'ไม่สามารถนำเข้าใบเสร็จได้'))
+                                    alert(L('Failed to import invoice', 'นำเข้าใบแจ้งหนี้ไม่สำเร็จ'))
                                   } finally {
                                     setShowReceiptModal(false)
                                   }
-                                }} disabled={used}>{L('Select', 'เลือก')}</button>
+                                }}>{L('Select', 'เลือก')}</button>
                               </td>
                             </tr>
                           )

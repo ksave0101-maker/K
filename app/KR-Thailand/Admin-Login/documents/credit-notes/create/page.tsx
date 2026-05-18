@@ -40,6 +40,7 @@ export default function CreateCreditNotePage() {
 
   // Calculations
   const [discount, setDiscount] = useState(0)
+  const [creditAmount, setCreditAmount] = useState<string>('')
   const vatRate = 7
   const [totals, setTotals] = useState({ subtotal: 0, vat: 0, total: 0 })
 
@@ -48,6 +49,15 @@ export default function CreateCreditNotePage() {
   const [loadingSourceTaxInvoice, setLoadingSourceTaxInvoice] = useState(false)
   const [errors, setErrors] = useState<string[]>([])
   const [messageBar, setMessageBar] = useState<{ type: 'success' | 'error', text: string } | null>(null)
+
+  // Tax invoice search modal
+  const [showTaxInvModal, setShowTaxInvModal] = useState(false)
+  const [taxInvList, setTaxInvList] = useState<any[]>([])
+  const [taxInvSearch, setTaxInvSearch] = useState('')
+  const [taxInvListLoading, setTaxInvListLoading] = useState(false)
+
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => { setMounted(true) }, [])
 
   // Locale
   const [locale, setLocale] = useState<'en'|'th'>('th')
@@ -142,6 +152,7 @@ export default function CreateCreditNotePage() {
       setCustomerName(String(taxInvoice.customer_name || ''))
       setItems(nextItems)
       setDiscount(0)
+      setCreditAmount('')
       setMessageBar({ type: 'success', text: L('Tax invoice data loaded successfully', 'ดึงข้อมูลใบกำกับภาษีเรียบร้อย') })
     } catch (err) {
       console.error('Failed to load tax invoice:', err)
@@ -255,21 +266,15 @@ export default function CreateCreditNotePage() {
     }
   }
 
-  return (
+  if (!mounted) return (
     <AdminLayout title="Create Credit Note" titleTh="สร้างใบลดหนี้">
-      {messageBar && (
-        <div style={{
-          padding: '12px 16px',
-          marginBottom: '16px',
-          borderRadius: 8,
-          color: messageBar.type === 'error' ? '#7f1d1d' : '#064e3b',
-          background: messageBar.type === 'error' ? '#fee2e2' : '#ecfdf5',
-          border: messageBar.type === 'error' ? '1px solid #fca5a5' : '1px solid #86efac'
-        }}>
-          {messageBar.text}
-        </div>
-      )}
+      <div className={styles.contentCard} style={{ minHeight: 400 }} />
+    </AdminLayout>
+  )
 
+  return (
+    <>
+    <AdminLayout title="Create Credit Note" titleTh="สร้างใบลดหนี้">
       <div className={styles.contentCard}>
         <div className={styles.cardHeader}>
           <h2 className={styles.cardTitle}>
@@ -349,7 +354,33 @@ export default function CreateCreditNotePage() {
                   <button type="button" className={styles.btnOutline} onClick={loadSourceTaxInvoice} disabled={loadingSourceTaxInvoice}>
                     {loadingSourceTaxInvoice ? L('Loading...', 'กำลังดึงข้อมูล...') : L('Load', 'ดึงข้อมูล')}
                   </button>
+                  <button type="button" className={styles.btnPrimary} onClick={async () => {
+                    setShowTaxInvModal(true)
+                    setTaxInvSearch('')
+                    try {
+                      setTaxInvListLoading(true)
+                      const res = await fetch('/api/tax-invoices?limit=200')
+                      const j = await res.json()
+                      setTaxInvList(res.ok && j?.success ? (j.rows || []) : [])
+                    } catch { setTaxInvList([]) }
+                    finally { setTaxInvListLoading(false) }
+                  }}>
+                    {L('Select', 'เลือก')}
+                  </button>
                 </div>
+                {messageBar && (
+                  <div style={{
+                    marginTop: 8,
+                    padding: '8px 12px',
+                    borderRadius: 6,
+                    fontSize: 13,
+                    color: messageBar.type === 'error' ? '#7f1d1d' : '#064e3b',
+                    background: messageBar.type === 'error' ? '#fee2e2' : '#ecfdf5',
+                    border: messageBar.type === 'error' ? '1px solid #fca5a5' : '1px solid #86efac'
+                  }}>
+                    {messageBar.text}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -418,6 +449,36 @@ export default function CreateCreditNotePage() {
                     </div>
                   </>
                 )}
+
+                {/* Credit Amount override */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, padding: '10px 12px', background: '#fefce8', border: '1px solid #fde047', borderRadius: 8 }}>
+                  <div>
+                    <div style={{ fontWeight: 700, color: '#854d0e' }}>{L('Credit Amount (excl. VAT)', 'ยอดจำนวนที่คืน (ไม่รวม VAT)')}</div>
+                    <div style={{ fontSize: 11, color: '#a16207' }}>{L('Leave blank to use imported total', 'เว้นว่างเพื่อใช้ยอดที่ดึงมา')}</div>
+                  </div>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={creditAmount}
+                    placeholder={totals.subtotal.toFixed(2)}
+                    onChange={e => {
+                      const val = e.target.value
+                      setCreditAmount(val)
+                      const num = parseFloat(val)
+                      if (!isNaN(num) && num >= 0) {
+                        setItems([{
+                          description: items[0]?.description || L('Credit adjustment', 'รายการลดหนี้'),
+                          quantity: 1,
+                          unit_price: num
+                        }])
+                        setDiscount(0)
+                      }
+                    }}
+                    className={styles.formInput}
+                    style={{ width: 160, textAlign: 'right', fontWeight: 700, fontSize: 15 }}
+                  />
+                </div>
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
                   <span>{L('Subtotal', 'ยอดรวม')}:</span>
@@ -493,6 +554,88 @@ export default function CreateCreditNotePage() {
           </form>
         </div>
       </div>
+
     </AdminLayout>
+
+      {/* Tax Invoice Search Modal */}
+      {showTaxInvModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ width: '90%', maxWidth: 860, background: '#fff', borderRadius: 8, padding: 16, boxShadow: '0 6px 24px rgba(0,0,0,0.2)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <div style={{ fontWeight: 700 }}>{L('Select Tax Invoice', 'เลือกใบกำกับภาษี')}</div>
+              <button onClick={() => setShowTaxInvModal(false)} style={{ background: 'transparent', border: 'none', fontSize: 18, cursor: 'pointer' }}>✕</button>
+            </div>
+            <input
+              placeholder={L('Search by tax invoice no or customer', 'ค้นหาด้วยเลขที่หรือชื่อลูกค้า')}
+              value={taxInvSearch}
+              onChange={e => setTaxInvSearch(e.target.value)}
+              style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #ddd', marginBottom: 10, fontSize: 13 }}
+            />
+            <div style={{ maxHeight: '55vh', overflow: 'auto' }}>
+              {taxInvListLoading && <div style={{ padding: 20, textAlign: 'center' }}>{L('Loading...', 'กำลังโหลด...')}</div>}
+              {!taxInvListLoading && (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ background: '#f1f5f9' }}>
+                      <th style={{ padding: '8px 10px', textAlign: 'left', borderBottom: '1px solid #e2e8f0' }}>{L('Tax Invoice No', 'เลขที่ใบกำกับภาษี')}</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'left', borderBottom: '1px solid #e2e8f0' }}>{L('Customer', 'ลูกค้า')}</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'left', borderBottom: '1px solid #e2e8f0' }}>{L('Date', 'วันที่')}</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'right', borderBottom: '1px solid #e2e8f0' }}>{L('Total', 'ยอดรวม')}</th>
+                      <th style={{ padding: '8px 10px', borderBottom: '1px solid #e2e8f0' }}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {taxInvList.filter(t => {
+                      if (!taxInvSearch) return true
+                      const q = taxInvSearch.toLowerCase()
+                      return String(t.taxNo || '').toLowerCase().includes(q) || String(t.customer_name || '').toLowerCase().includes(q)
+                    }).map((t: any, idx: number) => (
+                      <tr key={t.taxNo || idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={{ padding: '7px 10px', fontWeight: 600 }}>{t.taxNo || '-'}</td>
+                        <td style={{ padding: '7px 10px' }}>{t.customer_name || '-'}</td>
+                        <td style={{ padding: '7px 10px', color: '#666' }}>{t.taxDate ? new Date(t.taxDate).toLocaleDateString() : '-'}</td>
+                        <td style={{ padding: '7px 10px', textAlign: 'right' }}>{Number(t.total_amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                        <td style={{ padding: '7px 10px' }}>
+                          <button className={styles.btnPrimary} style={{ padding: '4px 12px', fontSize: 12 }} onClick={async () => {
+                            setInvoiceRef(t.taxNo || '')
+                            setShowTaxInvModal(false)
+                            // Auto-load the selected tax invoice
+                            const res = await fetch(`/api/tax-invoices?taxNo=${encodeURIComponent(t.taxNo)}`)
+                            const j = await res.json()
+                            if (res.ok && j?.success && j.taxInvoice) {
+                              const ti = j.taxInvoice
+                              const parsed = Array.isArray(ti.items) ? ti.items : (typeof ti.items === 'string' ? (() => { try { return JSON.parse(ti.items) } catch { return [] } })() : [])
+                              const mapped = parsed.length > 0
+                                ? parsed.map((item: any) => ({
+                                    description: String(item.description || item.desc || item.product_name || ''),
+                                    quantity: Number(item.quantity || item.qty || 1),
+                                    unit_price: Number(item.unit_price || item.unitPrice || item.price || 0)
+                                  })).filter((i: any) => i.description || i.quantity > 0 || i.unit_price > 0)
+                                : [{ description: `${L('Credit adjustment from tax invoice', 'รายการลดหนี้จากใบกำกับภาษี')} ${ti.taxNo}`, quantity: 1, unit_price: Number(ti.total_amount || 0) }]
+                              setSourceTaxInvoice({ ...ti, items: parsed })
+                              setCustomerName(String(ti.customer_name || ''))
+                              setItems(mapped)
+                              setDiscount(0)
+                              setMessageBar({ type: 'success', text: L('Tax invoice loaded', 'ดึงข้อมูลใบกำกับภาษีเรียบร้อย') })
+                            }
+                          }}>{L('Select', 'เลือก')}</button>
+                        </td>
+                      </tr>
+                    ))}
+                    {taxInvList.filter(t => {
+                      if (!taxInvSearch) return true
+                      const q = taxInvSearch.toLowerCase()
+                      return String(t.taxNo || '').toLowerCase().includes(q) || String(t.customer_name || '').toLowerCase().includes(q)
+                    }).length === 0 && (
+                      <tr><td colSpan={5} style={{ padding: 20, textAlign: 'center', color: '#999' }}>{L('No tax invoices found', 'ไม่พบใบกำกับภาษี')}</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   )
 }

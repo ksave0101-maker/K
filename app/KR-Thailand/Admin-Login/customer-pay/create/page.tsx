@@ -39,12 +39,13 @@ export default function CustomerSearchPage() {
           window.close()
           return
         }
-        // Otherwise dispatch a global event listeners can pick up
-        window.dispatchEvent(new CustomEvent('k-system-list-select', { detail: cust }))
-        // Also store to localStorage as fallback
-        try { localStorage.setItem('k_system_selected_customer', JSON.stringify(cust)) } catch (_) {}
-        alert('Customer selected')
-        // keep the page open for further actions
+        // Not a popup — navigate directly to customer-pay with this customer
+        const id = cust?.cusID || cust?.cusId || cust?.id || cust?.customerId
+        if (id) {
+          router.push(`/KR-Thailand/Admin-Login/customer-pay?cusID=${encodeURIComponent(String(id))}`)
+        } else {
+          alert('Selected customer has no id')
+        }
         return
       }
 

@@ -40,17 +40,12 @@ export default function ReceiptPage() {
 
   async function openInvoiceSearch() {
     setShowInvoiceModal(true)
-    if (invoices !== null) return
+    setInvoiceSearch('')
     try {
       setInvoiceLoading(true)
-      const res = await fetch('/api/invoices?limit=50')
+      const res = await fetch('/api/invoices?limit=200')
       const j = await res.json()
-      if (res.ok && j && j.success) {
-        const data = j.invoices || j.list || (Array.isArray(j) ? j : [])
-        setInvoices(Array.isArray(data) ? data : [])
-      } else {
-        setInvoices([])
-      }
+      setInvoices(res.ok && j?.success ? (j.rows || []) : [])
     } catch (e) { console.error('Failed to fetch invoices', e); setInvoices([]) }
     finally { setInvoiceLoading(false) }
   }
@@ -96,14 +91,14 @@ export default function ReceiptPage() {
     finally { closeInvoiceSearch() }
   }
 
-  const [locale, setLocale] = useState<'en'|'th'>(() => {
-    try {
-      const l = localStorage.getItem('locale') || localStorage.getItem('k_system_lang')
-      return l === 'th' ? 'th' : 'en'
-    } catch { return 'th' }
-  })
+  const [locale, setLocale] = useState<'en'|'th'>('th')
 
   useEffect(() => {
+    try {
+      const l = localStorage.getItem('locale') || localStorage.getItem('k_system_lang')
+      if (l === 'en' || l === 'th') setLocale(l)
+    } catch { }
+
     const handler = (e: Event) => {
       const d = (e as any).detail
       const v = typeof d === 'string' ? d : d?.locale
@@ -180,7 +175,14 @@ export default function ReceiptPage() {
     setLoading(true);
     ;(async () => {
       try {
-        const createdBy = (typeof window !== 'undefined' && (localStorage?.k_system_admin_user || localStorage?.getItem?.('k_system_admin_user'))) || 'thailand admin'
+        let createdBy = 'thailand admin'
+        try {
+          const raw = localStorage.getItem('k_system_admin_user')
+          if (raw) {
+            const u = JSON.parse(raw)
+            createdBy = u.fullname || u.name || u.username || String(u.userId || '') || 'thailand admin'
+          }
+        } catch { }
         // compute outstanding after this submission when linked to an invoice
         const invoiceTotal = invoiceInfo ? Number(invoiceInfo.total_amount || 0) : 0
         const paidSoFar = Number(invoicePaidAmount || 0)
@@ -294,33 +296,11 @@ export default function ReceiptPage() {
                 <button type="button" onClick={async () => {
                   if (!invNo) return alert(L('Enter invoice number', 'กรอกเลขที่ใบแจ้งหนี้'))
                   try {
-                    const res = await fetch(`/api/receipts?invNo=${encodeURIComponent(invNo)}&limit=1`)
+                    const res = await fetch(`/api/invoices?invNo=${encodeURIComponent(invNo)}`)
                     const j = await res.json()
-                    if (res.ok && j && j.success) {
-                      if (j.invoice) {
-                        setInvoiceInfo(j.invoice)
-                        // Auto-fill payment record with invoice amount
-                        const today = new Date().toISOString().split('T')[0]
-                        const invoiceAmount = Number(j.invoice.total_amount) || 0
-                        // Calculate remaining amount if there are existing receipts
-                        const paidAmount = (j.receipts || []).reduce((sum: number, r: any) => sum + Number(r.amount || 0), 0)
-                        const remaining = Math.max(0, invoiceAmount - paidAmount)
-                        setRecords([{
-                          date: today,
-                          method: 'Bank Transfer',
-                          amount: remaining,
-                          reference: '',
-                          invoice_no: invNo
-                        }])
-                        setInvoicePaidAmount(paidAmount)
-                        alert(L('Invoice imported. Remaining amount: ', 'นำเข้าใบแจ้งหนี้แล้ว ยอดค้างชำระ: ') + remaining.toFixed(2) + ' ฿')
-                      } else if (j.receipts && j.receipts.length > 0) {
-                        setInvoiceInfo({ invID: j.receipts[0].invID, invNo: j.receipts[0].invoice_no, total_amount: j.receipts[0].invoice_total, status: j.receipts[0].invoice_status })
-                      } else {
-                        setInvoiceInfo(null)
-                      }
+                    if (res.ok && j && j.success && j.invoice) {
+                      await selectInvoice(j.invoice)
                     } else {
-                      setInvoiceInfo(null)
                       alert(L('Invoice not found', 'ไม่พบใบแจ้งหนี้'))
                     }
                   } catch (err) {
@@ -459,9 +439,8 @@ export default function ReceiptPage() {
               </div>
             </div>
             <div style={{ maxHeight: '60vh', overflow: 'auto' }}>
-              {invoiceLoading && <div>Loading…</div>}
-              {!invoiceLoading && invoices && invoices.length === 0 && <div style={{ color: '#666' }}>{L('No invoices found', 'ไม่พบใบแจ้งหนี้')}</div>}
-              {!invoiceLoading && invoices && invoices.length > 0 && (
+              {invoiceLoading && <div style={{ padding: 20, textAlign: 'center' }}>{L('Loading...', 'กำลังโหลด...')}</div>}
+              {!invoiceLoading && invoices && (
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr>
@@ -469,25 +448,30 @@ export default function ReceiptPage() {
                       <th style={{ borderBottom: '1px solid #eee', padding: 8 }}>{L('Date', 'วันที่')}</th>
                       <th style={{ borderBottom: '1px solid #eee', padding: 8 }}>{L('Customer', 'ลูกค้า')}</th>
                       <th style={{ borderBottom: '1px solid #eee', padding: 8, textAlign: 'right' }}>{L('Total', 'ยอดรวม')}</th>
-                      <th style={{ borderBottom: '1px solid #eee', padding: 8 }}>{L('', '')}</th>
+                      <th style={{ borderBottom: '1px solid #eee', padding: 8 }}></th>
                     </tr>
                   </thead>
                   <tbody>
                     {invoices.filter(inv => {
                       if (!invoiceSearch) return true
                       const s = invoiceSearch.toLowerCase()
-                      const invNo = String(inv.invNo || inv.inv_id || inv.invoice_no || '')
-                      const cust = String(inv.customer_name || inv.cusName || inv.customer || '')
-                      return invNo.toLowerCase().includes(s) || cust.toLowerCase().includes(s)
-                    }).map((inv: any) => (
-                      <tr key={inv.invNo || inv.inv_id || inv.invoice_no}>
-                        <td style={{ padding: 8, borderBottom: '1px solid #f3f4f6' }}>{inv.invNo || inv.invoice_no || inv.inv_id}</td>
-                        <td style={{ padding: 8, borderBottom: '1px solid #f3f4f6' }}>{inv.invoice_date || inv.invDate || '-'}</td>
-                        <td style={{ padding: 8, borderBottom: '1px solid #f3f4f6' }}>{inv.customer_name || inv.customer || '-'}</td>
-                        <td style={{ padding: 8, borderBottom: '1px solid #f3f4f6', textAlign: 'right' }}>{Number(inv.total_amount || inv.amount || 0).toFixed(2)}</td>
-                        <td style={{ padding: 8, borderBottom: '1px solid #f3f4f6' }}><button onClick={() => selectInvoice(inv)} className={styles.btn}>Select</button></td>
+                      return String(inv.invNo || '').toLowerCase().includes(s) || String(inv.customer_name || '').toLowerCase().includes(s)
+                    }).map((inv: any, idx: number, arr: any[]) => arr.length === 0 ? null : (
+                      <tr key={inv.invNo || idx}>
+                        <td style={{ padding: 8, borderBottom: '1px solid #f3f4f6' }}>{inv.invNo || '-'}</td>
+                        <td style={{ padding: 8, borderBottom: '1px solid #f3f4f6' }}>{inv.invDate || '-'}</td>
+                        <td style={{ padding: 8, borderBottom: '1px solid #f3f4f6' }}>{inv.customer_name || '-'}</td>
+                        <td style={{ padding: 8, borderBottom: '1px solid #f3f4f6', textAlign: 'right' }}>{Number(inv.total_amount || 0).toFixed(2)}</td>
+                        <td style={{ padding: 8, borderBottom: '1px solid #f3f4f6' }}><button onClick={() => selectInvoice(inv)} className={styles.btn}>{L('Select', 'เลือก')}</button></td>
                       </tr>
                     ))}
+                    {!invoiceLoading && invoices.filter(inv => {
+                      if (!invoiceSearch) return true
+                      const s = invoiceSearch.toLowerCase()
+                      return String(inv.invNo || '').toLowerCase().includes(s) || String(inv.customer_name || '').toLowerCase().includes(s)
+                    }).length === 0 && (
+                      <tr><td colSpan={5} style={{ padding: 20, textAlign: 'center', color: '#999' }}>{L('No invoices found', 'ไม่พบใบแจ้งหนี้')}</td></tr>
+                    )}
                   </tbody>
                 </table>
               )}

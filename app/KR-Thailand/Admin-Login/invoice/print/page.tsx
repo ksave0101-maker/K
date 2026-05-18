@@ -94,7 +94,8 @@ function InvoicePrintPageContent() {
 
   const discount = Number(invoice.discount || 0)
   const afterDiscount = subtotal - discount
-  const vat = Number(invoice.vat || ((afterDiscount * 7) / 100))
+  const vatRate = Number(invoice.vat || 7)
+  const vat = (afterDiscount * vatRate) / 100
   const grandTotal = Number(invoice.total_amount || (afterDiscount + vat))
 
   const customerName = invoice.customer_name || invoice.cusName || '-'
@@ -288,17 +289,21 @@ function InvoicePrintPageContent() {
           <div className="payment-grid">
             <div className="payment-item">
               <span className="payment-label">{L('Bank:', 'ธนาคาร:')}</span>
-              <span>{invoice.bank_name || 'Kasikorn Bank'}</span>
-            </div>
-            <div className="payment-item">
-              <span className="payment-label">{L('Account No:', 'เลขบัญชี:')}</span>
-              <span>{invoice.bank_account || 'XXX-X-XXXXX-X'}</span>
+              <span>{L('Kasikorn Bank (KBANK)', 'ธนาคารกสิกรไทย')}</span>
             </div>
             <div className="payment-item">
               <span className="payment-label">{L('Account Name:', 'ชื่อบัญชี:')}</span>
-              <span>{invoice.account_name || 'K Energy Save Co., Ltd.'}</span>
+              <span>{L('K Energy Save Co., Ltd.', 'บริษัท เค อีเนอร์ยี่ เซฟ จำกัด')}</span>
             </div>
             <div className="payment-item">
+              <span className="payment-label">{L('Current Account:', 'บัญชีกระแสรายวัน:')}</span>
+              <span>212-1-17253-7</span>
+            </div>
+            <div className="payment-item">
+              <span className="payment-label">{L('Savings Account:', 'บัญชีออมทรัพย์:')}</span>
+              <span>211-8-78336-3</span>
+            </div>
+            <div className="payment-item" style={{ gridColumn: 'span 2' }}>
               <span className="payment-label">{L('Note:', 'หมายเหตุ:')}</span>
               <span>{invoice.notes || '-'}</span>
             </div>
@@ -323,18 +328,6 @@ function InvoicePrintPageContent() {
           </div>
         </div>
 
-
-        <div style={{ marginTop: 20, padding: '12px 16px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6 }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: '#16a34a', marginBottom: 8 }}>
-            {L('Bank Account Information', 'ข้อมูลบัญชีธนาคาร')}
-          </div>
-          <div style={{ fontSize: 9, lineHeight: 1.6, color: '#334155' }}>
-            <div><strong>{L('Bank:', 'ธนาคาร:')}</strong> {L('Kasikorn Bank (KBANK)', 'ธนาคารกสิกรไทย')}</div>
-            <div><strong>{L('Current Account:', 'บัญชีกระแสรายวัน:')}</strong> 212-1-17253-7</div>
-            <div><strong>{L('Savings Account:', 'บัญชีออมทรัพย์:')}</strong> 211-8-78336-3</div>
-            <div><strong>{L('Account Name:', 'ชื่อบัญชี:')}</strong> {L('K Energy Save Co., Ltd.', 'บริษัท เค อีเนอร์ยี่ เซฟ จำกัด')}</div>
-          </div>
-        </div>
 
         <div className="footer-info">
           <span>{L('User:', 'ผู้พิมพ์:')} {loggedUser || '-'}</span>
