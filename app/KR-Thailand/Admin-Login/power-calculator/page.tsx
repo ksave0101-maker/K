@@ -174,18 +174,6 @@ export default function PowerCalculatorPage() {
       tiers: [{ label: 'ทุกหน่วย', from: 0, to: Infinity, rate: 2.3488 }],
       ftDefault: 0.1982,
     },
-    '1.2': {
-      label: 'Type 1.2 — Residential (>150 units/month)',
-      labelTh: 'ประเภทที่ 1.2 — บ้านพักอาศัย (เกิน 150 หน่วย/เดือน)',
-      sizes: ['5(15)A', '15(45)A', '30(100)A'],
-      serviceCharge: { '5(15)A': 8.19, '15(45)A': 38.22, '30(100)A': 68.08 },
-      tiers: [
-        { label: 'หน่วยที่ 1–150', from: 0, to: 150, rate: 3.2484 },
-        { label: 'หน่วยที่ 151–400', from: 150, to: 400, rate: 4.2218 },
-        { label: 'หน่วยที่ 401+', from: 400, to: Infinity, rate: 4.4217 },
-      ],
-      ftDefault: 0.1982,
-    },
     '2': {
       label: 'Type 2 — Small Business',
       labelTh: 'ประเภทที่ 2 — กิจการขนาดเล็ก',
@@ -231,18 +219,20 @@ export default function PowerCalculatorPage() {
     },
   }
 
-  const [meterTypeKey, setMeterTypeKey] = useState<string>('1.2')
+  const [meterTypeKey, setMeterTypeKey] = useState<string>('1.1')
   const [meterSize, setMeterSize] = useState<string>('15(45)A')
   const [ftRate, setFtRate] = useState<number>(0.1982)
   const [tariffTiers, setTariffTiers] = useState<{ label: string; from: number; to: number; rate: number }[]>(
-    METER_PRESETS['1.2'].tiers
+    METER_PRESETS['1.1'].tiers
   )
   const [showTariffPanel, setShowTariffPanel] = useState<boolean>(false)
-  const [tariffMode, setTariffMode] = useState<'unit' | 'tou'>('unit')
-  const [touSlots, setTouSlots] = useState<{ timeFrom: string; timeTo: string; rate: number; kwh: number }[]>([
-    { timeFrom: '09:00', timeTo: '22:00', rate: 5.7982, kwh: 0 },
-    { timeFrom: '22:00', timeTo: '09:00', rate: 2.6048, kwh: 0 },
-  ])
+  const [touBill, setTouBill] = useState({
+    peakDemand:    { kw: 0,  rate: 74.14  },   // กำลังไฟฟ้า Peak (฿/กว)
+    offPeakDemand: { kw: 0,  rate: 0      },   // กำลังไฟฟ้า Off-Peak (฿/กว)
+    peakEnergy:    { kwh: 0, rate: 5.7982 },   // พลังงาน Peak (฿/หน่วย)
+    offPeakEnergy: { kwh: 0, rate: 2.6048 },   // พลังงาน Off-Peak (฿/หน่วย)
+    serviceCharge: 312.24,                      // ค่าบริการรายเดือน
+  })
 
   // When meter type changes, reset to preset defaults
   const handleMeterTypeChange = (key: string) => {
@@ -259,26 +249,14 @@ export default function PowerCalculatorPage() {
   const calcBill = (kwhUsage: number) => {
     let energyCost = 0
     let totalKwh = kwhUsage
-    if (tariffMode === 'tou') {
-      const filledSlots = touSlots.filter(s => s.kwh > 0)
-      if (filledSlots.length > 0) {
-        totalKwh = filledSlots.reduce((s, slot) => s + slot.kwh, 0)
-        energyCost = filledSlots.reduce((s, slot) => s + slot.kwh * slot.rate, 0)
-      } else {
-        // auto split: distribute kwhUsage proportionally among slots
-        const n = touSlots.length || 1
-        energyCost = touSlots.reduce((s, slot) => s + (kwhUsage / n) * slot.rate, 0)
-      }
-    } else {
-      let remaining = kwhUsage
-      for (const tier of tariffTiers) {
-        const tierWidth = tier.to === Infinity ? remaining : Math.min(remaining, tier.to - tier.from)
-        if (tierWidth <= 0) break
-        energyCost += tierWidth * tier.rate
-        remaining -= tierWidth
-        if (remaining <= 0) break
-      }
-    }
+    const { peakDemand, offPeakDemand, peakEnergy, offPeakEnergy, serviceCharge: sc } = touBill
+    totalKwh = peakEnergy.kwh + offPeakEnergy.kwh
+    energyCost =
+      peakDemand.kw    * peakDemand.rate    +
+      offPeakDemand.kw * offPeakDemand.rate +
+      peakEnergy.kwh   * peakEnergy.rate    +
+      offPeakEnergy.kwh * offPeakEnergy.rate +
+      sc
     const ftCost = totalKwh * ftRate
     const subtotal = energyCost + ftCost
     const vat = subtotal * 0.07
@@ -289,105 +267,6 @@ export default function PowerCalculatorPage() {
   const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
   const monthNamesTh = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
   const [monthlyKwh, setMonthlyKwh] = useState<number[]>(() => Array(12).fill(0))
-
-  // Print / report helpers
-  const _printReport = () => {
-    try {
-      const titleText = title || 'Power Calculation Report'
-
-      const rowsAppliances = (appliances || []).map(a => `
-        <tr>
-          <td>${(a.name||'')}</td>
-          <td style="text-align:right">${Number(a.power||0).toLocaleString()}</td>
-          <td style="text-align:center">${Number(a.qty||1)}</td>
-          <td style="text-align:center">${Number(a.hours||0)}</td>
-        </tr>
-      `).join('')
-
-      const rowsUsage = (usageHistory || []).map(u => `
-        <tr>
-          <td>${u.period||''}</td>
-          <td style="text-align:right">${Number(u.kwh||0).toLocaleString()}</td>
-          <td style="text-align:right">${u.peak_kw ? Number(u.peak_kw).toFixed(2) : '-'}</td>
-        </tr>
-      `).join('')
-
-      const html = `<!doctype html>
-      <html>
-      <head>
-        <meta charset="utf-8" />
-        <title>${titleText}</title>
-        <style>
-          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; padding: 20px; color: #222 }
-          h1 { font-size: 20px; margin-bottom: 6px }
-          .meta { margin-bottom: 12px; color: #444 }
-          table { width: 100%; border-collapse: collapse; margin-bottom: 12px }
-          th, td { border: 1px solid #ddd; padding: 6px }
-          th { background: #f3f4f6; text-align: left }
-          .footer { position: fixed; bottom: 8px; left: 0; right: 0; text-align: center; font-size: 12px; color: #666 }
-          @media print {
-            @page { margin: 18mm }
-            .footer { position: fixed; bottom: 8px }
-            .pagenum:after { content: counter(page) }
-            .totalpages:after { content: counter(pages) }
-          }
-        </style>
-      </head>
-      <body>
-        <h1>${titleText}</h1>
-        <div class="meta">
-          <div><strong>Customer:</strong> ${customer?.name || ''} ${customer?.phone ? ' — ' + customer.phone : ''}</div>
-          <div><strong>Calculated:</strong> ${new Date().toLocaleString()}</div>
-        </div>
-
-        <h3>Inputs</h3>
-        <table>
-          <tr><th>Voltage (V)</th><td>${voltage}</td><th>Phase</th><td>${phase}</td></tr>
-          <tr><th>Current (A)</th><td>${current}</td><th>Power Factor</th><td>${pf}</td></tr>
-        </table>
-
-        <h3>Appliances</h3>
-        <table>
-          <thead><tr><th>Name</th><th style="text-align:right">Power (W)</th><th style="text-align:center">Qty</th><th style="text-align:center">Hours/day</th></tr></thead>
-          <tbody>
-            ${rowsAppliances}
-          </tbody>
-        </table>
-
-        <h3>Results</h3>
-        <table>
-          <tr><th>Apparent (VA)</th><td>${results.apparent.toFixed(2)}</td><th>Real (W)</th><td>${results.real.toFixed(2)}</td></tr>
-          <tr><th>Reactive (VAR)</th><td>${results.reactive.toFixed(2)}</td><th>Estimated Current (A)</th><td>${((phase === 'single' ? results.apparent / voltage : results.apparent / (Math.sqrt(3) * voltage)) || 0).toFixed(2)}</td></tr>
-        </table>
-
-        <h3>Usage History</h3>
-        <table>
-          <thead><tr><th>Period</th><th style="text-align:right">kWh</th><th style="text-align:right">Peak kW</th></tr></thead>
-          <tbody>
-            ${rowsUsage}
-          </tbody>
-        </table>
-
-        
-
-        <div class="footer">${'Page '}<span class="pagenum"></span>${' / '}<span class="totalpages"></span></div>
-        <script>
-          // Auto print when opened
-          window.onload = function() { setTimeout(function(){ window.print(); }, 200); }
-        </script>
-      </body>
-      </html>`
-
-      const w = window.open('', '_blank')
-      if (!w) return alert('Unable to open print window')
-      w.document.open()
-      w.document.write(html)
-      w.document.close()
-    } catch (err) {
-      console.error('Print report error', err)
-      alert('Failed to prepare report')
-    }
-  }
 
   const [locale, setLocale] = useState<'en'|'th'>('th')
 
@@ -846,7 +725,7 @@ export default function PowerCalculatorPage() {
                         <td>{c.phone || c.tel || c.customer_phone || ''}</td>
                         <td style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.address || c.site_address || ''}</td>
                         <td style={{ textAlign: 'center' }}>
-                          <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => { const customerName = c.fullname || c.name || ''; setCustomer({ cusID: c.cusID, name: customerName, phone: c.phone || c.tel || c.customer_phone || '', address: c.address || c.site_address || '' }); setCompanyName(customerName); setShowCustomerModal(false); setCustomerSearchTerm('') }}>{L('Select','เลือก')}</button>
+                          <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => { const cn = c.fullname || c.name || ''; setCustomer({ cusID: c.cusID, name: cn, phone: c.phone || c.tel || c.customer_phone || '', address: c.address || c.site_address || '' }); setCompanyName(cn); setCustomerName(cn); setShowCustomerModal(false); setCustomerSearchTerm('') }}>{L('Select','เลือก')}</button>
                         </td>
                       </tr>
                     ))}
@@ -970,136 +849,101 @@ export default function PowerCalculatorPage() {
 
             {showTariffPanel && (
               <div style={{ padding: '0 14px 14px' }}>
-                {/* Meter type selector */}
-                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 12 }}>
-                  <div className={styles.formGroup} style={{ margin: 0 }}>
-                    <label className={styles.formLabel}>{L('Meter Type', 'ประเภทมิเตอร์')}</label>
-                    <select
-                      value={meterTypeKey}
-                      onChange={e => handleMeterTypeChange(e.target.value)}
-                      className={styles.formSelect}
-                      style={{ width: 320 }}
-                    >
-                      {Object.entries(METER_PRESETS).map(([k, v]) => (
-                        <option key={k} value={k}>{v.labelTh}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className={styles.formGroup} style={{ margin: 0 }}>
-                    <label className={styles.formLabel}>{L('Meter Size', 'ขนาดมิเตอร์')}</label>
-                    <input
-                      type="text"
-                      value={meterSize}
-                      onChange={e => setMeterSize(e.target.value)}
-                      className={styles.formInput}
-                      placeholder={L('e.g. 15(45)A', 'เช่น 15(45)A')}
-                      style={{ width: 160 }}
-                    />
-                  </div>
-                  <div className={styles.formGroup} style={{ margin: 0 }}>
-                    <label className={styles.formLabel}>{L('FT (฿/unit)', 'ค่า FT (฿/หน่วย)')}</label>
-                    <input type="number" step="0.0001" value={ftRate} onChange={e => setFtRate(Number(e.target.value))} className={styles.formInput} style={{ width: 100 }} />
-                  </div>
-                </div>
-
-                {/* Tier rates / TOU toggle */}
+                {/* TOU Bill Table */}
                 <div style={{ marginBottom: 12 }}>
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: '#065f46' }}>{L('Rate Type', 'ประเภทอัตรา')}</span>
-                    <button type="button" onClick={() => setTariffMode('unit')}
-                      style={{ padding: '4px 12px', borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                        background: tariffMode === 'unit' ? '#065f46' : '#fff',
-                        color: tariffMode === 'unit' ? '#fff' : '#065f46',
-                        border: '1px solid #065f46' }}>
-                      {L('By Unit (Tiered)', 'ตามหน่วย (ขั้นบันได)')}
-                    </button>
-                    <button type="button" onClick={() => setTariffMode('tou')}
-                      style={{ padding: '4px 12px', borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                        background: tariffMode === 'tou' ? '#065f46' : '#fff',
-                        color: tariffMode === 'tou' ? '#fff' : '#065f46',
-                        border: '1px solid #065f46' }}>
-                      {L('By Time (TOU)', 'ตามเวลา (TOU)')}
-                    </button>
-                  </div>
-
-                  {tariffMode === 'unit' ? (
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                      <thead>
-                        <tr style={{ background: '#dcfce7' }}>
-                          <th style={{ padding: '6px 10px', textAlign: 'left', border: '1px solid #bbf7d0' }}>{L('Tier', 'ช่วงหน่วย')}</th>
-                          <th style={{ padding: '6px 10px', textAlign: 'right', border: '1px solid #bbf7d0', width: 140 }}>{L('Rate (฿/kWh)', 'อัตรา (฿/หน่วย)')}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {tariffTiers.map((tier, idx) => (
-                          <tr key={idx} style={{ background: idx % 2 === 0 ? '#f0fdf4' : '#fff' }}>
-                            <td style={{ padding: '6px 10px', border: '1px solid #bbf7d0' }}>{tier.label}</td>
-                            <td style={{ padding: '6px 10px', border: '1px solid #bbf7d0' }}>
-                              <input type="number" step="0.0001" value={tier.rate}
-                                onChange={e => setTariffTiers(prev => prev.map((t, i) => i === idx ? { ...t, rate: Number(e.target.value) } : t))}
-                                style={{ width: '100%', textAlign: 'right', padding: '4px 6px', borderRadius: 4, border: '1px solid #d1fae5' }} />
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  ) : (
-                    <>
-                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  {(() => {
+                    const tb = touBill
+                    const upd = (field: keyof typeof tb, sub: string, val: number) =>
+                      setTouBill(prev => ({ ...prev, [field]: { ...(prev[field] as any), [sub]: val } }))
+                    const peakDemandAmt    = tb.peakDemand.kw    * tb.peakDemand.rate
+                    const offPeakDemandAmt = tb.offPeakDemand.kw * tb.offPeakDemand.rate
+                    const peakEnergyAmt    = tb.peakEnergy.kwh   * tb.peakEnergy.rate
+                    const offPeakEnergyAmt = tb.offPeakEnergy.kwh * tb.offPeakEnergy.rate
+                    const totalKwhTou      = tb.peakEnergy.kwh + tb.offPeakEnergy.kwh
+                    const basedTotal       = peakDemandAmt + offPeakDemandAmt + peakEnergyAmt + offPeakEnergyAmt + tb.serviceCharge
+                    const ftAmt            = totalKwhTou * ftRate
+                    const subtotal         = basedTotal + ftAmt
+                    const vatAmt           = subtotal * 0.07
+                    const grandTotal       = subtotal + vatAmt
+                    const cellStyle        = { padding: '5px 8px', border: '1px solid #bbf7d0', fontSize: 13 } as const
+                    const inputStyle       = { width: '100%', textAlign: 'right' as const, padding: '3px 5px', borderRadius: 4, border: '1px solid #d1fae5', fontSize: 13 }
+                    const amtStyle         = { ...cellStyle, textAlign: 'right' as const, fontWeight: 600 as const }
+                    return (
+                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                         <thead>
                           <tr style={{ background: '#dcfce7' }}>
-                            <th style={{ padding: '6px 8px', textAlign: 'center', border: '1px solid #bbf7d0', width: 90 }}>{L('From', 'เริ่ม')}</th>
-                            <th style={{ padding: '6px 8px', textAlign: 'center', border: '1px solid #bbf7d0', width: 90 }}>{L('To', 'ถึง')}</th>
-                            <th style={{ padding: '6px 8px', textAlign: 'right', border: '1px solid #bbf7d0', width: 130 }}>{L('Rate (฿/kWh)', 'อัตรา (฿/หน่วย)')}</th>
-                            <th style={{ padding: '6px 8px', textAlign: 'right', border: '1px solid #bbf7d0', width: 120 }}>{L('kWh used', 'หน่วยที่ใช้')}</th>
-                            <th style={{ padding: '6px 8px', border: '1px solid #bbf7d0', width: 36 }}></th>
+                            <th style={{ ...cellStyle, textAlign: 'left' }}>{L('Item', 'รายการ')}</th>
+                            <th style={{ ...cellStyle, textAlign: 'right', width: 120 }}>{L('Qty (kW/kWh)', 'จำนวน (กว/หน่วย)')}</th>
+                            <th style={{ ...cellStyle, textAlign: 'right', width: 130 }}>{L('Rate (฿)', 'ราคาต่อหน่วย (฿)')}</th>
+                            <th style={{ ...cellStyle, textAlign: 'right', width: 130 }}>{L('Amount (฿)', 'จำนวนเงิน (฿)')}</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {touSlots.map((slot, idx) => (
-                            <tr key={idx} style={{ background: idx % 2 === 0 ? '#f0fdf4' : '#fff' }}>
-                              <td style={{ padding: '4px 6px', border: '1px solid #bbf7d0' }}>
-                                <input type="time" value={slot.timeFrom}
-                                  onChange={e => setTouSlots(s => s.map((r, i) => i === idx ? { ...r, timeFrom: e.target.value } : r))}
-                                  style={{ width: '100%', padding: '4px 4px', borderRadius: 4, border: '1px solid #d1fae5', fontSize: 13 }} />
-                              </td>
-                              <td style={{ padding: '4px 6px', border: '1px solid #bbf7d0' }}>
-                                <input type="time" value={slot.timeTo}
-                                  onChange={e => setTouSlots(s => s.map((r, i) => i === idx ? { ...r, timeTo: e.target.value } : r))}
-                                  style={{ width: '100%', padding: '4px 4px', borderRadius: 4, border: '1px solid #d1fae5', fontSize: 13 }} />
-                              </td>
-                              <td style={{ padding: '4px 6px', border: '1px solid #bbf7d0' }}>
-                                <input type="number" step="0.0001" value={slot.rate}
-                                  onChange={e => setTouSlots(s => s.map((r, i) => i === idx ? { ...r, rate: Number(e.target.value) } : r))}
-                                  style={{ width: '100%', textAlign: 'right', padding: '4px 6px', borderRadius: 4, border: '1px solid #d1fae5' }} />
-                              </td>
-                              <td style={{ padding: '4px 6px', border: '1px solid #bbf7d0' }}>
-                                <input type="number" step="1" min="0" value={slot.kwh || ''}
-                                  placeholder={L('auto', 'auto')}
-                                  onChange={e => setTouSlots(s => s.map((r, i) => i === idx ? { ...r, kwh: Number(e.target.value) || 0 } : r))}
-                                  style={{ width: '100%', textAlign: 'right', padding: '4px 6px', borderRadius: 4, border: '1px solid #d1fae5' }} />
-                              </td>
-                              <td style={{ padding: '4px 4px', border: '1px solid #bbf7d0', textAlign: 'center' }}>
-                                <button type="button" onClick={() => setTouSlots(s => s.filter((_, i) => i !== idx))}
-                                  style={{ color: '#dc2626', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button>
-                              </td>
+                          {/* Peak demand */}
+                          <tr style={{ background: '#f0fdf4' }}>
+                            <td style={cellStyle}>{L('Peak Demand', 'ค่ากำลังไฟฟ้า Peak')} <span style={{ fontSize: 11, color: '#047857' }}>(จ.–ศ. 09:00–22:00)</span></td>
+                            <td style={cellStyle}><input type="number" step="0.01" min="0" value={tb.peakDemand.kw || ''} placeholder="0" onChange={e => upd('peakDemand','kw',Number(e.target.value)||0)} style={inputStyle} /> <span style={{ fontSize: 11 }}>กว.</span></td>
+                            <td style={cellStyle}><input type="number" step="0.0001" value={tb.peakDemand.rate} onChange={e => upd('peakDemand','rate',Number(e.target.value))} style={inputStyle} /></td>
+                            <td style={amtStyle}>{peakDemandAmt.toLocaleString('th-TH',{minimumFractionDigits:2})}</td>
+                          </tr>
+                          {/* Off-peak demand */}
+                          <tr style={{ background: '#fff' }}>
+                            <td style={cellStyle}>{L('Off-Peak Demand', 'ค่ากำลังไฟฟ้า Off-Peak')}</td>
+                            <td style={cellStyle}><input type="number" step="0.01" min="0" value={tb.offPeakDemand.kw || ''} placeholder="0" onChange={e => upd('offPeakDemand','kw',Number(e.target.value)||0)} style={inputStyle} /> <span style={{ fontSize: 11 }}>กว.</span></td>
+                            <td style={cellStyle}><input type="number" step="0.0001" value={tb.offPeakDemand.rate} onChange={e => upd('offPeakDemand','rate',Number(e.target.value))} style={inputStyle} /></td>
+                            <td style={amtStyle}>{offPeakDemandAmt.toLocaleString('th-TH',{minimumFractionDigits:2})}</td>
+                          </tr>
+                          {/* Peak energy */}
+                          <tr style={{ background: '#f0fdf4' }}>
+                            <td style={cellStyle}>{L('Peak Energy', 'ค่าพลังงานไฟฟ้า Peak')}</td>
+                            <td style={cellStyle}><input type="number" step="1" min="0" value={tb.peakEnergy.kwh || ''} placeholder="0" onChange={e => upd('peakEnergy','kwh',Number(e.target.value)||0)} style={inputStyle} /> <span style={{ fontSize: 11 }}>หน่วย</span></td>
+                            <td style={cellStyle}><input type="number" step="0.0001" value={tb.peakEnergy.rate} onChange={e => upd('peakEnergy','rate',Number(e.target.value))} style={inputStyle} /></td>
+                            <td style={amtStyle}>{peakEnergyAmt.toLocaleString('th-TH',{minimumFractionDigits:2})}</td>
+                          </tr>
+                          {/* Off-peak energy */}
+                          <tr style={{ background: '#fff' }}>
+                            <td style={cellStyle}>{L('Off-Peak Energy', 'ค่าพลังงานไฟฟ้า Off-Peak')}</td>
+                            <td style={cellStyle}><input type="number" step="1" min="0" value={tb.offPeakEnergy.kwh || ''} placeholder="0" onChange={e => upd('offPeakEnergy','kwh',Number(e.target.value)||0)} style={inputStyle} /> <span style={{ fontSize: 11 }}>หน่วย</span></td>
+                            <td style={cellStyle}><input type="number" step="0.0001" value={tb.offPeakEnergy.rate} onChange={e => upd('offPeakEnergy','rate',Number(e.target.value))} style={inputStyle} /></td>
+                            <td style={amtStyle}>{offPeakEnergyAmt.toLocaleString('th-TH',{minimumFractionDigits:2})}</td>
+                          </tr>
+                          {/* Service charge */}
+                          <tr style={{ background: '#f0fdf4' }}>
+                            <td style={cellStyle} colSpan={3}>{L('Service Charge / month', 'ค่าบริการรายเดือน')}</td>
+                            <td style={cellStyle}><input type="number" step="0.01" value={tb.serviceCharge} onChange={e => setTouBill(prev => ({ ...prev, serviceCharge: Number(e.target.value) }))} style={inputStyle} /></td>
+                          </tr>
+                          {/* Based total */}
+                          <tr style={{ background: '#dcfce7', fontWeight: 700 }}>
+                            <td style={cellStyle} colSpan={3}>{L('Total Based Amount', 'รวมเงินค่าไฟฟ้าฐาน')}</td>
+                            <td style={amtStyle}>{basedTotal.toLocaleString('th-TH',{minimumFractionDigits:2})}</td>
+                          </tr>
+                          {/* FT */}
+                          <tr style={{ background: '#fff' }}>
+                            <td style={cellStyle}>FT ({totalKwhTou.toLocaleString()} {L('units','หน่วย')} × {ftRate} ฿)</td>
+                            <td style={cellStyle} colSpan={2}></td>
+                            <td style={amtStyle}>{ftAmt.toLocaleString('th-TH',{minimumFractionDigits:2})}</td>
+                          </tr>
+                          {/* VAT */}
+                          <tr style={{ background: '#f0fdf4' }}>
+                            <td style={cellStyle}>VAT 7%</td>
+                            <td style={cellStyle} colSpan={2}></td>
+                            <td style={amtStyle}>{vatAmt.toLocaleString('th-TH',{minimumFractionDigits:2})}</td>
+                          </tr>
+                          {/* Grand total */}
+                          <tr style={{ background: '#065f46', color: '#fff', fontWeight: 700 }}>
+                            <td style={{ ...cellStyle, border: '1px solid #047857' }} colSpan={3}>{L('Grand Total', 'รวมทั้งสิ้น')}</td>
+                            <td style={{ ...cellStyle, border: '1px solid #047857', textAlign: 'right', fontSize: 15 }}>{grandTotal.toLocaleString('th-TH',{minimumFractionDigits:2})} ฿</td>
+                          </tr>
+                          {totalKwhTou > 0 && (
+                            <tr style={{ background: '#f8fafc' }}>
+                              <td style={cellStyle} colSpan={3} >{L('Effective rate (Grand Total / total units)', 'อัตราจริง (ยอดรวม / หน่วยรวม)')}</td>
+                              <td style={amtStyle}>{(grandTotal / totalKwhTou).toFixed(4)} ฿/{L('unit','หน่วย')}</td>
                             </tr>
-                          ))}
+                          )}
                         </tbody>
                       </table>
-                      <button type="button"
-                        onClick={() => setTouSlots(s => [...s, { timeFrom: '00:00', timeTo: '00:00', rate: 0, kwh: 0 }])}
-                        style={{ marginTop: 6, padding: '4px 12px', borderRadius: 6, background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#065f46', cursor: 'pointer', fontSize: 12 }}>
-                        + {L('Add time slot', 'เพิ่มช่วงเวลา')}
-                      </button>
-                      <div style={{ marginTop: 4, fontSize: 11, color: '#047857' }}>
-                        * {L('Leave kWh blank → system splits total kWh equally across all slots', 'ไม่กรอก kWh → ระบบแบ่งเท่าๆ กันอัตโนมัติ')}
-                      </div>
-                    </>
-                  )}
-                  {METER_PRESETS[meterTypeKey]?.note && tariffMode === 'unit' && (
-                    <div style={{ marginTop: 4, fontSize: 11, color: '#047857' }}>* {METER_PRESETS[meterTypeKey].note}</div>
-                  )}
+                    )
+                  })()}
                 </div>
 
                 {/* Bill preview for avg monthly kWh */}
@@ -1138,10 +982,6 @@ export default function PowerCalculatorPage() {
           {/* Pricing / savings inputs and 12-month profit/loss table */}
           <div style={{ marginTop: 16, padding: 12, background: '#fff', borderRadius: 8, border: '1px solid #eef2ff' }}>
             <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 8 }}>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <label style={{ fontSize: 13, color: '#334155' }}>{L('Unit price (THB/kWh)','ราคา/หน่วย (บาท/หน่วย)')}</label>
-                <input type="number" value={unitPrice} onChange={e => setUnitPrice(Number(e.target.value))} className={styles.formInput} style={{ width: 120 }} />
-              </div>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <label style={{ fontSize: 13, color: '#334155' }}>{L('Expected saving %','คาดการณ์การประหยัด (%)')}</label>
                 <input type="number" value={expectedSavingsPercent} onChange={e => setExpectedSavingsPercent(Number(e.target.value))} className={styles.formInput} style={{ width: 80 }} />
@@ -1240,10 +1080,41 @@ export default function PowerCalculatorPage() {
                 <input className={styles.formInput} value={companyName} onChange={e => setCompanyName(e.target.value)} placeholder={L('Enter company name', 'กรอกชื่อบริษัท')} style={{ maxWidth: 400 }} />
               </div>
 
-              {/* Customer name input */}
+              {/* Customer name — searchable */}
               <div style={{ marginBottom: 16 }}>
                 <label className={styles.formLabel}>{L('Customer Name', 'ชื่อลูกค้า')}</label>
-                <input className={styles.formInput} value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder={L('Enter customer name', 'กรอกชื่อลูกค้า')} style={{ maxWidth: 400 }} />
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', maxWidth: 520 }}>
+                  <input
+                    className={styles.formInput}
+                    value={customerName}
+                    onChange={e => setCustomerName(e.target.value)}
+                    placeholder={L('Enter or search customer name', 'กรอกหรือค้นหาชื่อลูกค้า')}
+                    style={{ flex: 1 }}
+                  />
+                  <button type="button" className={styles.btnOutline} style={{ whiteSpace: 'nowrap' }}
+                    onClick={async () => {
+                      const q = customerName.trim() || ''
+                      setSearchingCustomers(true)
+                      try {
+                        const res = await fetch(`/api/customers${q ? `?search=${encodeURIComponent(q)}` : ''}`)
+                        const j = await res.json()
+                        if (res.ok && j && Array.isArray(j.customers)) {
+                          setCustomerResults(j.customers)
+                          setShowCustomerModal(true)
+                        } else {
+                          alert(L('No customers found', 'ไม่พบลูกค้า'))
+                        }
+                      } catch { alert(L('Search failed', 'ค้นหาไม่สำเร็จ')) }
+                      finally { setSearchingCustomers(false) }
+                    }}>
+                    {searchingCustomers ? L('…', '…') : L('Search', 'ค้นหา')}
+                  </button>
+                  {customer && (
+                    <span style={{ fontSize: 12, color: '#047857', whiteSpace: 'nowrap' }}>
+                      ✓ {customer.name}
+                    </span>
+                  )}
+                </div>
               </div>
 
               {/* Section 1: Contracted capacity and average monthly usage */}
