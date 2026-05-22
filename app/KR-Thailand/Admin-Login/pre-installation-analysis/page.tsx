@@ -103,13 +103,122 @@ export default function ThailandPreInstallationAnalysis() {
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
 
-  // Per-meter per-phase upload
-  const [selectedMeter, setSelectedMeter] = useState<1 | 2>(1);
-  const [phaseFiles, setPhaseFiles] = useState<{ [meter: number]: { L1: File | null; L2: File | null; L3: File | null } }>({
-    1: { L1: null, L2: null, L3: null },
-    2: { L1: null, L2: null, L3: null },
+  // Per-meter per-day 3-phase upload sets
+  interface DailyPhaseSet {
+    id: string;
+    date: string;
+    files: { L1: File | null; L2: File | null; L3: File | null };
+  }
+  const createDailyPhaseSet = (meter: number): DailyPhaseSet => ({
+    id: `meter-${meter}-day-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    date: '',
+    files: { L1: null, L2: null, L3: null },
   });
+  const initialMeter1DaySet = createDailyPhaseSet(1);
+  const initialMeter2DaySet = createDailyPhaseSet(2);
+  const [selectedMeter, setSelectedMeter] = useState<1 | 2>(1);
+  const [daySetsByMeter, setDaySetsByMeter] = useState<{
+    [meter: number]: DailyPhaseSet[];
+  }>({
+    1: [initialMeter1DaySet],
+    2: [initialMeter2DaySet],
+  });
+  const [selectedDaySetId, setSelectedDaySetId] = useState<string>(initialMeter1DaySet.id);
   const [phaseDragging, setPhaseDragging] = useState<{ [key: string]: boolean }>({});
+
+  const getSelectedDaySet = () => {
+    const list = daySetsByMeter[selectedMeter] || [];
+    return list.find(set => set.id === selectedDaySetId) || list[0] || createDailyPhaseSet(selectedMeter);
+  };
+
+  const formatDisplayDate = (value?: string) => {
+    if (!value) return '';
+    const dt = new Date(value);
+    if (Number.isNaN(dt.getTime())) return value;
+
+    const day = String(dt.getDate()).padStart(2, '0');
+    const month = String(dt.getMonth() + 1).padStart(2, '0');
+    const year = String(dt.getFullYear());
+    return lang === 'th' ? `${day}/${month}/${year}` : `${year}-${month}-${day}`;
+  };
+
+  const updateSelectedDaySet = (updater: (current: DailyPhaseSet) => DailyPhaseSet) => {
+    setDaySetsByMeter(prev => ({
+      ...prev,
+      [selectedMeter]: prev[selectedMeter].map(set =>
+        set.id === selectedDaySetId ? updater(set) : set
+      ),
+    }));
+  };
+
+  const addDaySet = (meter: number) => {
+    const next = createDailyPhaseSet(meter);
+    setDaySetsByMeter(prev => ({
+      ...prev,
+      [meter]: [...(prev[meter] || []), next],
+    }));
+    if (meter === selectedMeter) setSelectedDaySetId(next.id);
+  };
+
+  const removeDaySet = (meter: number, id: string) => {
+    setDaySetsByMeter(prev => {
+      const nextSets = (prev[meter] || []).filter(set => set.id !== id);
+      const finalSets = nextSets.length > 0 ? nextSets : [createDailyPhaseSet(meter)];
+      if (id === selectedDaySetId) {
+        setSelectedDaySetId(finalSets[0].id);
+      }
+      return {
+        ...prev,
+        [meter]: finalSets,
+      };
+    });
+  };
+
+  const setDaySetDate = (meter: number, id: string, date: string) => {
+    setDaySetsByMeter(prev => ({
+      ...prev,
+      [meter]: prev[meter].map(set => set.id === id ? { ...set, date } : set),
+    }));
+  };
+
+  const setDaySetFile = (meter: number, id: string, phase: 'L1' | 'L2' | 'L3', file: File | null) => {
+    const currentSet = daySetsByMeter[meter]?.find(set => set.id === id);
+    const prevFile = currentSet?.files[phase] ?? null;
+    setDaySetsByMeter(prev => ({
+      ...prev,
+      [meter]: prev[meter].map(set =>
+        set.id === id ? { ...set, files: { ...set.files, [phase]: file } } : set
+      ),
+    }));
+    const key = `${meter}-${phase}`;
+    setParseResults(prev => { const next = { ...prev }; delete next[key]; return next; });
+    setParseError(prev => { const next = { ...prev }; delete next[key]; return next; });
+    setSavedToDB(false);
+    setShowDetailTable(false);
+    if (file) {
+      setUploadedFiles(prev => {
+        const withoutPrev = prevFile ? prev.filter(f => f.name !== prevFile.name) : prev;
+        return [...withoutPrev.filter(f => f.name !== file.name), file];
+      });
+      parseUploadedCSVFile(file);
+    } else if (prevFile) {
+      setUploadedFiles(prev => prev.filter(f => f.name !== prevFile.name));
+      setUploadedFileData(prev => {
+        const next = { ...prev };
+        delete next[prevFile.name];
+        return next;
+      });
+    }
+  };
+
+  const getActiveDaySetFilesCount = () => {
+    const active = getSelectedDaySet();
+    return (['L1','L2','L3'] as const).filter(p => !!active.files[p]).length;
+  };
+
+  const getActiveDaySetsForMeter = () => daySetsByMeter[selectedMeter] || [createDailyPhaseSet(selectedMeter)];
+
+  const activeDaySet = getSelectedDaySet();
 
   // AI parse state
   type PhaseRecord = { record_time: string; value: number; voltage: string; pf: string };
@@ -196,44 +305,23 @@ export default function ThailandPreInstallationAnalysis() {
     reader.readAsText(file);
   };
 
-  const setPhaseFile = (meter: number, phase: 'L1' | 'L2' | 'L3', file: File | null) => {
-    const prevFile = phaseFiles[meter][phase];
-    setPhaseFiles(prev => ({ ...prev, [meter]: { ...prev[meter], [phase]: file } }));
-    const key = `${meter}-${phase}`;
-    setParseResults(prev => { const n = { ...prev }; delete n[key]; return n; });
-    setParseError(prev => { const n = { ...prev }; delete n[key]; return n; });
-    setSavedToDB(false);
-    setShowDetailTable(false);
-    if (file) {
-      setUploadedFiles(prev => {
-        const withoutPrev = prevFile ? prev.filter(f => f.name !== prevFile.name) : prev;
-        return [...withoutPrev.filter(f => f.name !== file.name), file];
-      });
-      parseUploadedCSVFile(file);
-    } else if (prevFile) {
-      setUploadedFiles(prev => prev.filter(f => f.name !== prevFile.name));
-      setUploadedFileData(prev => {
-        const next = { ...prev };
-        delete next[prevFile.name];
-        return next;
-      });
-    }
-  };
-
   const parsePhaseFile = async (
     meter: number,
     phase: 'L1' | 'L2' | 'L3',
+    file?: File,
     mode: 'preview' | 'save' = 'preview',
     batchIdOverride?: string,
+    recordDate?: string,
   ): Promise<PhaseResult | null> => {
-    const file = phaseFiles[meter][phase];
-    if (!file) return null;
+    const activeSet = getSelectedDaySet();
+    const actualFile = file || activeSet.files[phase];
+    if (!actualFile) return null;
     const key = `${meter}-${phase}`;
     setParseLoading(prev => ({ ...prev, [key]: true }));
     setParseError(prev => { const n = { ...prev }; delete n[key]; return n; });
     try {
       const fd = new FormData();
-      fd.append('file', file);
+      fd.append('file', actualFile);
       fd.append('meter', String(meter));
       fd.append('phase', phase);
       fd.append('batchId', batchIdOverride || activeBatchIdUpload);
@@ -241,6 +329,7 @@ export default function ThailandPreInstallationAnalysis() {
       fd.append('customerName', uploadCustomerName);
       fd.append('location', uploadCustomerLocation);
       fd.append('cusID', uploadCusID ? String(uploadCusID) : '');
+      if (recordDate) fd.append('recordDate', recordDate);
       const res = await fetch('/api/thailand/pre-install-parse-file', { method: 'POST', body: fd });
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || 'Parse failed');
@@ -268,11 +357,13 @@ export default function ThailandPreInstallationAnalysis() {
     setUploadSuccess(null);
     setUploadError(null);
 
+    const activeSet = getSelectedDaySet();
     const results: { L1: PhaseResult | null; L2: PhaseResult | null; L3: PhaseResult | null } = { L1: null, L2: null, L3: null };
     const phaseFailures: string[] = [];
     for (const phase of ['L1', 'L2', 'L3'] as const) {
-      if (phaseFiles[meter][phase]) {
-        results[phase] = await parsePhaseFile(meter, phase, 'save', newBatchId);
+      const file = activeSet.files[phase];
+      if (file) {
+        results[phase] = await parsePhaseFile(meter, phase, file, 'save', newBatchId, activeSet.date);
         if (!results[phase]) {
           const key = `${meter}-${phase}`;
           phaseFailures.push(`${phase}: ${parseError[key] || (lang === 'th' ? 'อ่านไฟล์ไม่ได้' : 'Could not parse file')}`);
@@ -376,8 +467,10 @@ export default function ThailandPreInstallationAnalysis() {
     setUploadSuccess(null);
     setUploadError(null);
     try {
+      const activeSet = getSelectedDaySet();
       for (const phase of ['L1', 'L2', 'L3'] as const) {
-        if (phaseFiles[meter][phase]) await parsePhaseFile(meter, phase, 'save', activeBatchIdUpload);
+        const file = activeSet.files[phase];
+        if (file) await parsePhaseFile(meter, phase, file, 'save', activeBatchIdUpload, activeSet.date);
       }
       setSavedToDB(true);
       setUploadSuccess(lang === 'th' ? 'บันทึกลงฐานข้อมูลเรียบร้อยแล้ว' : 'Saved to database successfully');
@@ -387,7 +480,46 @@ export default function ThailandPreInstallationAnalysis() {
     }
   };
 
+  const saveDraftForLater = async (meter: number) => {
+    if (!uploadCusSelected) {
+      setUploadCusError(true);
+      setUploadError(lang === 'th' ? 'กรุณาเลือกลูกค้าจากฐานข้อมูลก่อนบันทึก' : 'Please select a customer from the database before saving');
+      return;
+    }
+
+    const activeSet = getSelectedDaySet();
+    const files = (['L1', 'L2', 'L3'] as const).map(phase => ({ phase, file: activeSet.files[phase] })).filter(({ file }) => !!file);
+
+    if (files.length === 0) {
+      setUploadError(lang === 'th' ? 'กรุณาอัพโหลดไฟล์อย่างน้อย 1 เฟสก่อนบันทึก' : 'Please upload at least 1 phase file before saving');
+      return;
+    }
+
+    setIsSaving(true);
+    setUploadSuccess(null);
+    setUploadError(null);
+    try {
+      const batchId = `draft_${uploadCusSelected.cusID || 'cus'}_${meter}_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+      let savedPhases = 0;
+      for (const { phase, file } of files) {
+        if (!file) continue;
+        const result = await parsePhaseFile(meter, phase, file, 'save', batchId, activeSet.date);
+        if (result) savedPhases += 1;
+      }
+      if (savedPhases > 0) {
+        setUploadSuccess(lang === 'th' ? 'บันทึกไว้ก่อนเรียบร้อยแล้ว สามารถเพิ่มไฟล์ที่เหลือก่อนวิเคราะห์' : 'Saved draft successfully. You can add remaining files before analysis.');
+        reloadBatches();
+      } else {
+        setUploadError(lang === 'th' ? 'ไม่สามารถบันทึกไฟล์ในขณะนี้ กรุณาลองใหม่' : 'Unable to save draft at this time. Please try again.');
+      }
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const clearAllUploads = () => {
+    const resetSet1 = createDailyPhaseSet(1);
+    const resetSet2 = createDailyPhaseSet(2);
     setUploadedFiles([]);
     setUploadedCSVData([]);
     setUploadedFileData({});
@@ -400,10 +532,11 @@ export default function ThailandPreInstallationAnalysis() {
     setParseError({});
     setParseLoading({});
     setActiveBatchIdUpload(`batch_${Date.now()}`);
-    setPhaseFiles({
-      1: { L1: null, L2: null, L3: null },
-      2: { L1: null, L2: null, L3: null },
+    setDaySetsByMeter({
+      1: [resetSet1],
+      2: [resetSet2],
     });
+    setSelectedDaySetId(selectedMeter === 1 ? resetSet1.id : resetSet2.id);
   };
 
   const saveUploadedFilesToSystem = async () => {
@@ -414,7 +547,9 @@ export default function ThailandPreInstallationAnalysis() {
     }
 
     const metersWithFiles = ([1, 2] as const).filter(meter =>
-      (['L1', 'L2', 'L3'] as const).some(phase => !!phaseFiles[meter][phase])
+      (['L1', 'L2', 'L3'] as const).some(phase =>
+        daySetsByMeter[meter]?.some(set => !!set.files[phase])
+      )
     );
 
     if (metersWithFiles.length === 0) {
@@ -431,10 +566,14 @@ export default function ThailandPreInstallationAnalysis() {
 
       for (const meter of metersWithFiles) {
         const batchId = `batch_${uploadCusSelected.cusID || 'cus'}_${meter}_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-        for (const phase of ['L1', 'L2', 'L3'] as const) {
-          if (!phaseFiles[meter][phase]) continue;
-          const result = await parsePhaseFile(meter, phase, 'save', batchId);
-          if (result) savedPhases += 1;
+        const daySets = daySetsByMeter[meter] || [];
+        for (const daySet of daySets) {
+          for (const phase of ['L1', 'L2', 'L3'] as const) {
+            const file = daySet.files[phase];
+            if (!file) continue;
+            const result = await parsePhaseFile(meter, phase, file, 'save', batchId, daySet.date);
+            if (result) savedPhases += 1;
+          }
         }
       }
 
@@ -1409,147 +1548,226 @@ export default function ThailandPreInstallationAnalysis() {
               </div>
 
               {/* Meter Selector */}
-              <div className="flex items-center gap-3 mb-6">
+              <div className="flex items-center gap-3 mb-4 flex-wrap">
                 <span className="text-sm font-semibold text-gray-700">{lang === 'th' ? 'เลือกมิเตอร์:' : 'Select Meter:'}</span>
-                {([1, 2] as const).map(m => (
-                  <button
-                    key={m}
-                    onClick={() => setSelectedMeter(m)}
-                    className={`px-5 py-2 rounded-lg font-semibold border-2 transition-all ${
-                      selectedMeter === m
-                        ? 'bg-green-600 text-white border-green-600 shadow'
-                        : 'bg-white text-gray-600 border-gray-300 hover:border-green-400'
-                    }`}
-                  >
-                    {lang === 'th' ? `มิเตอร์ ${m}` : `Meter ${m}`}
-                  </button>
-                ))}
-                {/* indicator if both meters have files */}
                 {([1, 2] as const).map(m => {
-                  const mf = phaseFiles[m];
-                  const count = [mf.L1, mf.L2, mf.L3].filter(Boolean).length;
+                  const count = daySetsByMeter[m]?.reduce((sum, set) => sum + (['L1','L2','L3'] as const).filter(phase => !!set.files[phase]).length, 0) || 0;
+                  return (
+                    <button
+                      key={m}
+                      onClick={() => {
+                        setSelectedMeter(m);
+                        const firstSet = daySetsByMeter[m]?.[0];
+                        if (firstSet) setSelectedDaySetId(firstSet.id);
+                      }}
+                      className={`px-5 py-2 rounded-lg font-semibold border-2 transition-all ${
+                        selectedMeter === m
+                          ? 'bg-green-600 text-white border-green-600 shadow'
+                          : 'bg-white text-gray-600 border-gray-300 hover:border-green-400'
+                      }`}
+                    >
+                      {lang === 'th' ? `มิเตอร์ ${m}` : `Meter ${m}`}
+                    </button>
+                  );
+                })}
+                {([1, 2] as const).map(m => {
+                  const count = daySetsByMeter[m]?.reduce((sum, set) => sum + (['L1','L2','L3'] as const).filter(phase => !!set.files[phase]).length, 0) || 0;
                   return count > 0 ? (
-                    <span key={m} className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded-full font-medium">
+                    <span key={`count-${m}`} className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded-full font-medium">
                       {lang === 'th' ? `มิเตอร์ ${m}: ${count}/3 เฟส` : `Meter ${m}: ${count}/3 phases`}
                     </span>
                   ) : null;
                 })}
               </div>
 
-              {/* Phase Upload Zones */}
-              <div className="grid grid-cols-3 gap-4">
-                {(['L1', 'L2', 'L3'] as const).map((phase, pi) => {
-                  const phaseColors = [
-                    { border: 'border-blue-400', bg: 'bg-blue-50', dot: 'bg-blue-500', text: 'text-blue-700', activeBg: 'bg-blue-100' },
-                    { border: 'border-yellow-400', bg: 'bg-yellow-50', dot: 'bg-yellow-500', text: 'text-yellow-700', activeBg: 'bg-yellow-100' },
-                    { border: 'border-red-400', bg: 'bg-red-50', dot: 'bg-red-500', text: 'text-red-700', activeBg: 'bg-red-100' },
-                  ][pi];
-                  const file = phaseFiles[selectedMeter][phase];
-                  const dragKey = `${selectedMeter}-${phase}`;
-                  const dragging = !!phaseDragging[dragKey];
-                  const inputId = `phase-input-${selectedMeter}-${phase}`;
-                  return (
-                    <div key={phase}>
-                      <div className={`flex items-center gap-2 mb-2`}>
-                        <div className={`w-3 h-3 rounded-full ${phaseColors.dot}`} />
-                        <span className={`font-bold text-base ${phaseColors.text}`}>{phase}</span>
-                        <span className="text-xs text-gray-400">{lang === 'th' ? 'เฟส' : 'Phase'} {pi + 1}</span>
-                      </div>
-                      <div
-                        onDragOver={(e) => { e.preventDefault(); setPhaseDragging(p => ({ ...p, [dragKey]: true })); }}
-                        onDragLeave={() => setPhaseDragging(p => ({ ...p, [dragKey]: false }))}
-                        onDrop={(e) => {
-                          e.preventDefault();
-                          setPhaseDragging(p => ({ ...p, [dragKey]: false }));
-                          const files = Array.from(e.dataTransfer.files);
-                          const f = files.find(f => f.name.match(/\.(csv|xlsx|xls|pdf)$/i));
-                          if (f) setPhaseFile(selectedMeter, phase, f);
-                          else setUploadError(lang === 'th' ? 'รองรับเฉพาะ CSV, Excel, PDF' : 'Only CSV, Excel, PDF supported');
-                        }}
-                        onClick={() => document.getElementById(inputId)?.click()}
-                        className={`border-2 border-dashed rounded-xl p-5 text-center cursor-pointer transition-all min-h-[140px] flex flex-col items-center justify-center gap-2 ${
-                          dragging
-                            ? `${phaseColors.border} ${phaseColors.activeBg}`
-                            : file
-                            ? `${phaseColors.border} ${phaseColors.bg}`
-                            : 'border-gray-300 bg-gray-50 hover:' + phaseColors.border
+              <div className="border border-gray-200 rounded-2xl bg-white p-4 shadow-sm mb-6">
+                <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                  <div className="flex flex-wrap gap-2">
+                    {getActiveDaySetsForMeter().map((set, idx) => (
+                      <button
+                        key={set.id}
+                        onClick={() => setSelectedDaySetId(set.id)}
+                        className={`px-4 py-2 rounded-full text-sm font-semibold transition ${
+                          selectedDaySetId === set.id
+                            ? 'bg-green-600 text-white'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                         }`}
                       >
-                        <input
-                          id={inputId}
-                          type="file"
-                          accept=".csv,.xlsx,.xls,.pdf"
-                          className="hidden"
-                          onChange={(e) => {
-                            const f = e.target.files?.[0];
-                            if (f) { setPhaseFile(selectedMeter, phase, f); setUploadSuccess(null); setUploadError(null); }
-                            e.target.value = '';
+                        {lang === 'th' ? `วัน ${idx + 1}` : `Day ${idx + 1}`} {set.date ? `· ${formatDisplayDate(set.date)}` : ''}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => addDaySet(selectedMeter)}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition"
+                  >
+                    <Plus className="w-4 h-4" />
+                    {lang === 'th' ? 'เพิ่มวัน' : 'Add Day'}
+                  </button>
+                </div>
+                <p className="text-xs text-gray-500">
+                  {lang === 'th'
+                    ? 'อัพโหลดไฟล์กระแสไฟทั้ง 3 เฟสเป็นเซ็ตต่อวัน สามารถเพิ่มวันและกรอกวันที่ของชุดข้อมูลได้'
+                    : 'Upload 3-phase current files as a daily set. You can add days and fill the date for each set.'}
+                </p>
+              </div>
+
+              <div className="bg-white rounded-2xl shadow-sm p-5 mb-6">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
+                  <div className="w-full sm:w-auto">
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      {lang === 'th' ? 'วันที่ชุดข้อมูล' : 'Set date'}
+                    </label>
+                    <input
+                      type="date"
+                      value={activeDaySet.date}
+                      onChange={(e) => setDaySetDate(selectedMeter, activeDaySet.id, e.target.value)}
+                      className="w-full sm:w-56 px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-200"
+                    />
+                  </div>
+                  {getActiveDaySetsForMeter().length > 1 && (
+                    <button
+                      onClick={() => removeDaySet(selectedMeter, activeDaySet.id)}
+                      className="px-4 py-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition"
+                    >
+                      {lang === 'th' ? 'ลบวันนี้' : 'Remove Day'}
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {(['L1', 'L2', 'L3'] as const).map((phase, pi) => {
+                    const phaseColors = [
+                      { border: 'border-blue-400', bg: 'bg-blue-50', dot: 'bg-blue-500', text: 'text-blue-700', activeBg: 'bg-blue-100' },
+                      { border: 'border-yellow-400', bg: 'bg-yellow-50', dot: 'bg-yellow-500', text: 'text-yellow-700', activeBg: 'bg-yellow-100' },
+                      { border: 'border-red-400', bg: 'bg-red-50', dot: 'bg-red-500', text: 'text-red-700', activeBg: 'bg-red-100' },
+                    ][pi];
+                    const file = activeDaySet.files[phase];
+                    const dragKey = `${selectedMeter}-${activeDaySet.id}-${phase}`;
+                    const dragging = !!phaseDragging[dragKey];
+                    const inputId = `phase-input-${selectedMeter}-${activeDaySet.id}-${phase}`;
+                    return (
+                      <div key={phase}>
+                        <div className="flex items-center gap-2 mb-2">
+                          <div className={`w-3 h-3 rounded-full ${phaseColors.dot}`} />
+                          <span className={`font-bold text-base ${phaseColors.text}`}>{phase}</span>
+                          <span className="text-xs text-gray-400">{lang === 'th' ? 'เฟส' : 'Phase'} {pi + 1}</span>
+                        </div>
+                        <div
+                          onDragOver={(e) => { e.preventDefault(); setPhaseDragging(p => ({ ...p, [dragKey]: true })); }}
+                          onDragLeave={() => setPhaseDragging(p => ({ ...p, [dragKey]: false }))}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            setPhaseDragging(p => ({ ...p, [dragKey]: false }));
+                            const files = Array.from(e.dataTransfer.files);
+                            const f = files.find(f => f.name.match(/\.(csv|xlsx|xls|pdf)$/i));
+                            if (f) setDaySetFile(selectedMeter, activeDaySet.id, phase, f);
+                            else setUploadError(lang === 'th' ? 'รองรับเฉพาะ CSV, Excel, PDF' : 'Only CSV, Excel, PDF supported');
                           }}
-                        />
-                        {file ? (
-                          <>
-                            <CheckCircle className={`w-8 h-8 ${phaseColors.text}`} />
-                            <p className={`text-xs font-semibold ${phaseColors.text} break-all text-center px-1`}>{file.name}</p>
-                            <p className="text-xs text-gray-400">{(file.size / 1024).toFixed(1)} KB</p>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); setPhaseFile(selectedMeter, phase, null); }}
-                              className="mt-1 text-xs text-red-500 hover:underline"
-                            >
-                              {lang === 'th' ? 'ลบ' : 'Remove'}
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            <Upload className="w-8 h-8 text-gray-400" />
-                            <p className="text-sm font-medium text-gray-500">
-                              {lang === 'th' ? 'วางไฟล์หรือคลิก' : 'Drop or click'}
-                            </p>
-                            <p className="text-xs text-gray-400">CSV / Excel / PDF</p>
-                          </>
-                        )}
+                          onClick={() => document.getElementById(inputId)?.click()}
+                          className={`border-2 border-dashed rounded-xl p-5 text-center cursor-pointer transition-all min-h-[140px] flex flex-col items-center justify-center gap-2 ${
+                            dragging
+                              ? `${phaseColors.border} ${phaseColors.activeBg}`
+                              : file
+                              ? `${phaseColors.border} ${phaseColors.bg}`
+                              : 'border-gray-300 bg-gray-50 hover:' + phaseColors.border
+                          }`}
+                        >
+                          <input
+                            id={inputId}
+                            type="file"
+                            accept=".csv,.xlsx,.xls,.pdf"
+                            className="hidden"
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              if (f) { setDaySetFile(selectedMeter, activeDaySet.id, phase, f); setUploadSuccess(null); setUploadError(null); }
+                              e.target.value = '';
+                            }}
+                          />
+                          {file ? (
+                            <>
+                              <CheckCircle className={`w-8 h-8 ${phaseColors.text}`} />
+                              <p className={`text-xs font-semibold ${phaseColors.text} break-all text-center px-1`}>{file.name}</p>
+                              <p className="text-xs text-gray-400">{(file.size / 1024).toFixed(1)} KB</p>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setDaySetFile(selectedMeter, activeDaySet.id, phase, null); }}
+                                className="mt-1 text-xs text-red-500 hover:underline"
+                              >
+                                {lang === 'th' ? 'ลบ' : 'Remove'}
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <Upload className="w-8 h-8 text-gray-400" />
+                              <p className="text-sm font-medium text-gray-500">
+                                {lang === 'th' ? 'วางไฟล์หรือคลิก' : 'Drop or click'}
+                              </p>
+                              <p className="text-xs text-gray-400">CSV / Excel / PDF</p>
+                            </>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
 
               {/* Generate Button — always visible */}
-              <div className="mt-6 flex items-center justify-between gap-4 pt-5 border-t border-gray-100">
+              <div className="mt-6 flex flex-col gap-4 pt-5 border-t border-gray-100">
                 <div className="flex items-center gap-2 text-sm text-gray-500">
                   <Activity className="w-4 h-4" />
-                  {(['L1','L2','L3'] as const).some(p => phaseFiles[selectedMeter][p]) ? (
+                  {(['L1','L2','L3'] as const).some(p => activeDaySet.files[p]) ? (
                     <>
-                      {(['L1','L2','L3'] as const).filter(p => phaseFiles[selectedMeter][p]).map((p, i) => (
+                      {(['L1','L2','L3'] as const).filter(p => activeDaySet.files[p]).map((p, i) => (
                         <span key={p} className="px-2 py-0.5 rounded-full text-xs font-semibold"
                           style={{ background: ['#dbeafe','#fef9c3','#fee2e2'][i], color: ['#1d4ed8','#92400e','#b91c1c'][i] }}>{p}</span>
                       ))}
-                      <span className="text-gray-400">Meter {selectedMeter}</span>
+                      <span className="text-gray-400">{lang === 'th' ? 'วันที่เลือก' : 'Selected day'}</span>
                     </>
                   ) : (
-                    <span className="text-gray-400 text-xs">{lang === 'th' ? 'อัพโหลดไฟล์อย่างน้อย 1 เฟสก่อน Generate' : 'Upload at least 1 phase file to Generate'}</span>
+                    <span className="text-gray-400 text-xs">{lang === 'th' ? 'อัพโหลดไฟล์อย่างน้อย 1 เฟสในวันที่เลือกก่อน Generate' : 'Upload at least 1 phase file in the selected day before generating'}</span>
                   )}
                 </div>
-                <button
-                  onClick={() => parseAllPhasesForMeter(selectedMeter)}
-                  disabled={
-                    !uploadCusSelected ||
-                    !(['L1','L2','L3'] as const).some(p => phaseFiles[selectedMeter][p]) ||
-                    (['L1','L2','L3'] as const).some(p => parseLoading[`${selectedMeter}-${p}`])
-                  }
-                  className="flex items-center gap-2 px-8 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl font-bold text-base shadow-lg hover:from-green-700 hover:to-emerald-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  {(['L1','L2','L3'] as const).some(p => parseLoading[`${selectedMeter}-${p}`]) ? (
-                    <>
-                      <span className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                      {lang === 'th' ? 'กำลัง Generate...' : 'Generating...'}
-                    </>
-                  ) : (
-                    <>
-                      <Zap className="w-5 h-5" />
-                      Generate
-                    </>
-                  )}
-                </button>
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                  <button
+                    onClick={() => saveDraftForLater(selectedMeter)}
+                    disabled={
+                      !uploadCusSelected ||
+                      !(['L1','L2','L3'] as const).some(p => activeDaySet.files[p]) ||
+                      (['L1','L2','L3'] as const).some(p => parseLoading[`${selectedMeter}-${p}`])
+                    }
+                    className="flex items-center justify-center gap-2 px-6 py-3 bg-gray-200 text-gray-700 rounded-xl font-semibold transition hover:bg-gray-300 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <Save className="w-4 h-4" />
+                    {lang === 'th' ? 'บันทึกไว้ก่อน' : 'Save Draft'}
+                  </button>
+                  <button
+                    onClick={() => parseAllPhasesForMeter(selectedMeter)}
+                    disabled={
+                      !uploadCusSelected ||
+                      !(['L1','L2','L3'] as const).some(p => activeDaySet.files[p]) ||
+                      (['L1','L2','L3'] as const).some(p => parseLoading[`${selectedMeter}-${p}`])
+                    }
+                    className="flex items-center justify-center gap-2 px-8 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl font-bold text-base shadow-lg hover:from-green-700 hover:to-emerald-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {(['L1','L2','L3'] as const).some(p => parseLoading[`${selectedMeter}-${p}`]) ? (
+                      <>
+                        <span className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                        {lang === 'th' ? 'กำลัง Generate...' : 'Generating...'}
+                      </>
+                    ) : (
+                      <>
+                        <Zap className="w-5 h-5" />
+                        {lang === 'th' ? 'วิเคราะห์' : 'Analyze'}
+                      </>
+                    )}
+                  </button>
+                </div>
+                <p className="text-xs text-gray-400">
+                  {lang === 'th'
+                    ? 'สามารถกดบันทึกไว้ก่อน แล้วค่อยกลับมาวิเคราะห์เมื่อครบทุกไฟล์'
+                    : 'You can save a draft now and analyze later when all files are ready.'}
+                </p>
               </div>
 
               {/* Per-phase loading badges */}
