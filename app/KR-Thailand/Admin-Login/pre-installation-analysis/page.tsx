@@ -41,6 +41,9 @@ interface AnalysisData {
   approverName: string;
 }
 
+const HYDRATION_SAFE_DOCUMENT_NUMBER = 'TH-PIA-2026-0216-001';
+const HYDRATION_SAFE_DATETIME = '2026-02-16 14:30';
+
 // Helper functions
 const generateDocumentNumber = (): string => {
   const year = new Date().getFullYear();
@@ -114,8 +117,8 @@ export default function ThailandPreInstallationAnalysis() {
     date: '',
     files: { L1: null, L2: null, L3: null },
   });
-  const initialMeter1DaySet = createDailyPhaseSet(1);
-  const initialMeter2DaySet = createDailyPhaseSet(2);
+  const initialMeter1DaySet: DailyPhaseSet = { id: 'meter-1-day-initial', date: '', files: { L1: null, L2: null, L3: null } };
+  const initialMeter2DaySet: DailyPhaseSet = { id: 'meter-2-day-initial', date: '', files: { L1: null, L2: null, L3: null } };
   const [selectedMeter, setSelectedMeter] = useState<1 | 2>(1);
   const [daySetsByMeter, setDaySetsByMeter] = useState<{
     [meter: number]: DailyPhaseSet[];
@@ -1044,12 +1047,12 @@ export default function ThailandPreInstallationAnalysis() {
   const [analyses, setAnalyses] = useState<AnalysisData[]>([]);
   const [selectedBranch, setSelectedBranch] = useState('thailand');
 
-  const [formData, setFormData] = useState<AnalysisData>({
-    id: generateDocumentNumber(),
+  const createInitialFormData = (id = HYDRATION_SAFE_DOCUMENT_NUMBER, datetime = HYDRATION_SAFE_DATETIME): AnalysisData => ({
+    id,
     branch: 'Thailand',
     location: '',
     equipment: 'Fluke 438-II Motor Analyzer',
-    datetime: getCurrentDateTime(),
+    datetime,
     measurementPeriod: '7 days',
     technician: '',
     voltage: '380',
@@ -1066,9 +1069,27 @@ export default function ThailandPreInstallationAnalysis() {
     engineerName: '',
     engineerLicense: '',
     approvalStatus: 'Pending',
-    approvalDate: getCurrentDateTime(),
+    approvalDate: datetime,
     approverName: '',
   });
+
+  const [formData, setFormData] = useState<AnalysisData>(() => createInitialFormData());
+
+  useEffect(() => {
+    const currentDateTime = getCurrentDateTime();
+    setFormData(prev => {
+      if (prev.id !== HYDRATION_SAFE_DOCUMENT_NUMBER || prev.datetime !== HYDRATION_SAFE_DATETIME) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        id: generateDocumentNumber(),
+        datetime: currentDateTime,
+        approvalDate: currentDateTime,
+      };
+    });
+  }, []);
 
   const branches = [
     { id: 'thailand', name: lang === 'th' ? 'ไทย' : 'Thailand', countryCode: 'TH' as const },
